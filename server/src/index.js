@@ -61,15 +61,73 @@ if (!fs.existsSync(uploadsDir)) {
 }
 app.use('/uploads', express.static(uploadsDir));
 
-// --- DATA PERSISTENCE LAYER ---
+// --- MONGOOSE ORDER SCHEMA & MODEL ---
+const OrderItemSchema = new mongoose.Schema(
+  {
+    productId: { type: String, required: true },
+    productName: { type: String, required: true },
+    image: { type: String, default: '' },
+    price: { type: Number, required: true },
+    quantity: { type: Number, required: true, min: 1 },
+    lineTotal: { type: Number, required: true },
+  },
+  { _id: false }
+);
+
+const ShippingAddressSchema = new mongoose.Schema(
+  {
+    fullName: { type: String, required: true },
+    phone: { type: String, required: true },
+    email: { type: String, default: '' },
+    houseNo: { type: String, default: '' },
+    street: { type: String, default: '' },
+    locality: { type: String, default: '' },
+    landmark: { type: String, default: '' },
+    city: { type: String, default: '' },
+    state: { type: String, default: '' },
+    pincode: { type: String, default: '' },
+  },
+  { _id: false, strict: false }
+);
+
+const OrderSchema = new mongoose.Schema(
+  {
+    id: { type: String, required: true, unique: true, index: true },
+    orderNumber: { type: String, required: true, unique: true, index: true },
+    userId: { type: String, default: null },
+    guestEmail: { type: String, default: '' },
+    items: { type: [OrderItemSchema], required: true },
+    subtotal: { type: Number, required: true },
+    shippingCharge: { type: Number, default: 0 },
+    discount: { type: Number, default: 0 },
+    couponCode: { type: String, default: null },
+    finalTotal: { type: Number, required: true },
+    shippingAddress: { type: ShippingAddressSchema, required: true },
+    paymentMethod: { type: String, default: 'COD' },
+    paymentStatus: { type: String, default: 'Pending' },
+    orderStatus: { type: String, default: 'Order Placed' },
+    courierName: { type: String, default: 'Shiprocket Express Courier' },
+    awbNumber: { type: String, default: '' },
+    trackingUrl: { type: String, default: '' },
+    shipmentId: { type: String, default: '' },
+    createdAt: { type: String, default: () => new Date().toISOString() },
+    updatedAt: { type: String, default: () => new Date().toISOString() },
+  },
+  {
+    versionKey: false,
+    timestamps: false,
+  }
+);
+
+export const OrderModel = mongoose.models.Order || mongoose.model('Order', OrderSchema);
+
+// --- DEVELOPMENT LOCAL FILE PERSISTENCE (OFFLINE FALLBACK ONLY) ---
 const DATA_FILE = path.join(__dirname, '../data/store_db.json');
 
-// Ensure data directory exists
 if (!fs.existsSync(path.dirname(DATA_FILE))) {
   fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
 }
 
-// Initial DB Seed structure
 const INITIAL_DATA = {
   orders: [],
   inventoryLogs: [],
@@ -97,34 +155,89 @@ const saveDbData = (data) => {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 };
 
-// Optional MongoDB Connection (When MONGODB_URI is provided in production)
-let isMongoConnected = false;
+// Helper: Check if MongoDB connection is active
+export const isMongoReady = () => mongoose.connection && mongoose.connection.readyState === 1;
 
+// MongoDB Connection Lifecycle
 if (process.env.MONGODB_URI) {
   mongoose
     .connect(process.env.MONGODB_URI)
     .then(() => {
-      isMongoConnected = true;
       console.log('📦 Connected securely to MongoDB Atlas / Cloud Database');
     })
     .catch((err) => {
-      console.warn('⚠️ MongoDB connection error, falling back to local storage engine:', err.message);
+      console.warn('⚠️ MongoDB connection error:', err.message);
     });
 } else {
-  console.log('ℹ️ MONGODB_URI not provided. Running with resilient local JSON store.');
+  if (process.env.NODE_ENV === 'production') {
+    console.error('❌ CRITICAL: MONGODB_URI is not set in production! Orders will not be persisted.');
+  } else {
+    console.log('ℹ️ MONGODB_URI not provided. Running in development mode with local JSON store.');
+  }
 }
+
+// Generate unique order number (checks MongoDB or local DB to prevent collisions)
+const generateUniqueOrderNumber = async () => {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const candidate = `SLS-${Math.floor(100000 + Math.random() * 900000)}`;
+    if (isMongoReady()) {
+      const exists = await OrderModel.findOne({ orderNumber: candidate }).lean();
+      if (!exists) return candidate;
+    } else {
+      const db = getDbData();
+      const exists = (db.orders || []).some((o) => o.orderNumber === candidate);
+      if (!exists) return candidate;
+    }
+  }
+  return `SLS-${Math.floor(100000 + Math.random() * 900000)}-${Date.now().toString().slice(-4)}`;
+};
 
 // --- API ENDPOINTS ---
 
-// Health check endpoint (safe for public monitoring & Render health checks)
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
+// Health check endpoint (reports actual database connectivity without exposing secrets)
+app.get('/api/health', async (req, res) => {
+  const readyState = mongoose.connection ? mongoose.connection.readyState : 0;
+  const stateLabels = {
+    0: 'disconnected',
+    1: 'connected',
+    2: 'connecting',
+    3: 'disconnecting',
+  };
+  const connectionState = stateLabels[readyState] || 'unknown';
+
+  let pingOk = false;
+  let latencyMs = null;
+
+  if (readyState === 1 && mongoose.connection.db) {
+    try {
+      const start = Date.now();
+      await mongoose.connection.db.admin().ping();
+      latencyMs = Date.now() - start;
+      pingOk = true;
+    } catch {
+      pingOk = false;
+    }
+  }
+
+  const isProduction = process.env.NODE_ENV === 'production';
+  // In production, healthy requires MongoDB to be connected and pingable
+  const isHealthy = isProduction ? readyState === 1 && pingOk : true;
+
+  const healthPayload = {
+    status: isHealthy ? 'ok' : 'degraded',
     store: 'Sri Lakshmi Sarees API',
-    database: isMongoConnected ? 'mongodb' : 'json-store',
+    database: {
+      type: readyState === 1 ? 'mongodb' : isProduction ? 'none' : 'json-store',
+      state: connectionState,
+      ping: pingOk ? 'ok' : 'unreachable',
+      ...(latencyMs !== null ? { latencyMs } : {}),
+    },
     environment: process.env.NODE_ENV || 'development',
     time: new Date().toISOString(),
-  });
+  };
+
+  const statusCode = isHealthy ? 200 : 503;
+  res.status(statusCode).json(healthPayload);
 });
 
 // Get announcement banner
@@ -134,65 +247,152 @@ app.get('/api/announcement', (req, res) => {
 });
 
 // Search and retrieve an order by Order Number or Order ID
-app.get('/api/orders/:idOrNumber', (req, res) => {
+app.get('/api/orders/:idOrNumber', async (req, res) => {
   try {
     const { idOrNumber } = req.params;
+    if (!idOrNumber || !idOrNumber.trim()) {
+      return res.status(400).json({ error: 'Order identifier is required' });
+    }
+
     const cleanQuery = idOrNumber.trim().toUpperCase();
-    const db = getDbData();
 
-    const order = (db.orders || []).find(
-      (o) =>
-        (o.orderNumber && o.orderNumber.toUpperCase() === cleanQuery) ||
-        (o.id && o.id.toUpperCase() === cleanQuery)
-    );
+    // 1. Try MongoDB first if connected
+    if (isMongoReady()) {
+      const mongoOrder = await OrderModel.findOne({
+        $or: [
+          { orderNumber: cleanQuery },
+          { id: idOrNumber.trim() },
+        ],
+      }).lean();
 
-    if (!order) {
+      if (mongoOrder) {
+        // Remove internal _id for consistent API contract
+        const { _id, ...cleanOrder } = mongoOrder;
+        return res.json({ success: true, order: cleanOrder });
+      }
+    }
+
+    // 2. In production, if not found in MongoDB, return 404
+    if (process.env.NODE_ENV === 'production') {
       return res.status(404).json({ error: 'Order not found' });
     }
 
-    res.json({ success: true, order });
+    // 3. In development mode, check local JSON store fallback
+    const db = getDbData();
+    const localOrder = (db.orders || []).find(
+      (o) =>
+        (o.orderNumber && o.orderNumber.toUpperCase() === cleanQuery) ||
+        (o.id && o.id === idOrNumber.trim())
+    );
+
+    if (localOrder) {
+      return res.json({ success: true, order: localOrder });
+    }
+
+    return res.status(404).json({ error: 'Order not found' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to retrieve order', details: error.message });
   }
 });
 
-// Create Order API with Server-side verification and AWB generation
-app.post('/api/orders', (req, res) => {
+// Create Order API with server-side validation and secure database persistence
+app.post('/api/orders', async (req, res) => {
   try {
     const { items, shippingAddress, paymentMethod, couponCode, subtotal, finalTotal, guestEmail } =
       req.body;
 
-    if (!items || items.length === 0) {
+    if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Order items cannot be empty' });
     }
 
-    const orderNumber = `SLS-${Math.floor(100000 + Math.random() * 900000)}`;
+    if (!shippingAddress || !shippingAddress.fullName || !shippingAddress.phone) {
+      return res.status(400).json({ error: 'Valid shipping address with fullName and phone is required' });
+    }
+
+    const isProduction = process.env.NODE_ENV === 'production';
+    const mongoConnected = isMongoReady();
+
+    // STRICT PRODUCTION SAFEGUARD:
+    // In production, never report success unless MongoDB is connected and ready.
+    if (isProduction && !mongoConnected) {
+      return res.status(503).json({
+        error: 'Database service unavailable. Order could not be securely persisted.',
+        code: 'DB_UNAVAILABLE',
+      });
+    }
+
+    const orderNumber = await generateUniqueOrderNumber();
+    const awbNumber = `AWB${Math.floor(100000000 + Math.random() * 900000000)}`;
 
     const newOrder = {
       id: `ord-${Date.now()}`,
       orderNumber,
+      userId: req.body.userId || null,
       guestEmail: guestEmail || (shippingAddress && shippingAddress.email) || '',
       items,
-      subtotal,
+      subtotal: Number(subtotal) || 0,
       shippingCharge: subtotal >= 2999 ? 0 : 150,
-      discount: 0,
-      couponCode,
-      finalTotal,
+      discount: Number(req.body.discount) || 0,
+      couponCode: couponCode || null,
+      finalTotal: Number(finalTotal) || Number(subtotal) || 0,
       shippingAddress,
-      paymentMethod,
+      paymentMethod: paymentMethod || 'COD',
       paymentStatus: paymentMethod === 'COD' ? 'Pending' : 'Paid',
       orderStatus: 'Order Placed',
       courierName: 'Shiprocket Express Courier',
-      awbNumber: `AWB${Math.floor(100000000 + Math.random() * 900000000)}`,
+      awbNumber,
+      trackingUrl: `https://shiprocket.co/tracking/${awbNumber}`,
+      shipmentId: `SR-SHIP-${Date.now()}`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
+    // 1. If MongoDB is connected, persist to MongoDB Atlas
+    if (mongoConnected) {
+      try {
+        const createdDoc = await OrderModel.create(newOrder);
+        const orderResponse = createdDoc.toObject ? createdDoc.toObject() : createdDoc;
+        delete orderResponse._id;
+        return res.status(201).json({ success: true, order: orderResponse });
+      } catch (dbErr) {
+        // Safe duplicate collision handling: retry with guaranteed unique key if collision occurs
+        if (dbErr.code === 11000) {
+          console.warn('Collision detected on order identifier. Retrying with fresh unique key...');
+          newOrder.orderNumber = `SLS-${Math.floor(100000 + Math.random() * 900000)}-${Date.now().toString().slice(-4)}`;
+          newOrder.id = `ord-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+          try {
+            const retryDoc = await OrderModel.create(newOrder);
+            const retryResponse = retryDoc.toObject ? retryDoc.toObject() : retryDoc;
+            delete retryResponse._id;
+            return res.status(201).json({ success: true, order: retryResponse });
+          } catch (retryErr) {
+            console.error('Fatal retry error saving order to MongoDB:', retryErr.message);
+            return res.status(500).json({ error: 'Failed to persist order to database', details: retryErr.message });
+          }
+        }
+
+        console.error('Failed to save order to MongoDB:', dbErr.message);
+        return res.status(500).json({
+          error: 'Failed to persist order to database',
+          details: dbErr.message,
+        });
+      }
+    }
+
+    // 2. Strict Production Guard: Impossible to use local JSON file in production
+    if (isProduction) {
+      return res.status(503).json({
+        error: 'Database service unavailable. Order could not be securely persisted.',
+        code: 'DB_UNAVAILABLE',
+      });
+    }
+
+    // 3. Development offline fallback only (never reached in production)
     const db = getDbData();
     db.orders.unshift(newOrder);
     saveDbData(db);
 
-    res.status(201).json({ success: true, order: newOrder });
+    return res.status(201).json({ success: true, order: newOrder });
   } catch (error) {
     res.status(500).json({ error: 'Failed to create order', details: error.message });
   }
