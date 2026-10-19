@@ -34,6 +34,7 @@ export interface Product {
   isBestSeller?: boolean;
   isFeatured?: boolean;
   isActive: boolean;
+  isDemo?: boolean;
   rating?: number;
   reviewsCount?: number;
   createdAt?: string;
@@ -111,6 +112,7 @@ export interface Order {
   awbNumber?: string;
   trackingUrl?: string;
   shipmentId?: string;
+  idempotencyKey?: string;
   createdAt: string;
   updatedAt: string;
 }

@@ -1,15 +1,21 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Filter, X, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import { ProductCard } from '../components/product/ProductCard';
 import { QuickViewModal } from '../components/product/QuickViewModal';
 import { Product, SareeCategory } from '../types';
-import { getStoredProducts } from '../services/api';
+import { getStoredProducts, fetchProductsFromServer } from '../services/api';
 
 export const ShopPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [products] = useState<Product[]>(getStoredProducts);
+  const [products, setProducts] = useState<Product[]>(getStoredProducts);
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
+
+  useEffect(() => {
+    fetchProductsFromServer().then((data) => {
+      if (data && data.length > 0) setProducts(data);
+    });
+  }, []);
 
   // Filter States from URL or defaults
   const activeCategory = searchParams.get('category') || 'All';

@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User } from '../types';
 import { useToast } from './ToastContext';
+import { adminLoginApi, clearAdminToken, getAdminToken } from '../services/api';
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password?: string) => boolean;
+  login: (email: string, password?: string) => Promise<boolean>;
   logout: () => void;
   register: (name: string, email: string, phone?: string) => boolean;
   isAdmin: boolean;
@@ -27,21 +28,37 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [user]);
 
-  const login = (email: string, password?: string): boolean => {
-    // Admin Master Account login check
-    if (email.toLowerCase() === 'admin@srilakshmisarees.com' && password === 'admin123') {
-      const adminUser: User = {
-        id: 'user-admin-1',
-        name: 'Store Administrator',
-        email: 'admin@srilakshmisarees.com',
-        role: 'admin'
-      };
-      setUser(adminUser);
-      showToast('Welcome Administrator! Logged into Admin Dashboard.', 'success');
-      return true;
+  // If page is loaded with an admin token and user is marked admin, verify session
+  useEffect(() => {
+    const token = getAdminToken();
+    if (!token && user?.role === 'admin') {
+      setUser(null);
+    }
+  }, [user?.role]);
+
+  const login = async (email: string, password?: string): Promise<boolean> => {
+    const cleanEmail = email.toLowerCase().trim();
+
+    // Admin Authentication via Backend API and JWT
+    if (cleanEmail === 'admin@srilakshmisarees.com') {
+      try {
+        const { email: adminEmail } = await adminLoginApi(cleanEmail, password || '');
+        const adminUser: User = {
+          id: 'user-admin-1',
+          name: 'Store Administrator',
+          email: adminEmail,
+          role: 'admin'
+        };
+        setUser(adminUser);
+        showToast('Authenticated successfully. Access granted to Admin Dashboard.', 'success');
+        return true;
+      } catch (err: any) {
+        showToast(err.message || 'Administrator authentication failed.', 'error');
+        return false;
+      }
     }
 
-    // Default Customer Login
+    // Customer Login
     const customerUser: User = {
       id: `user-${Date.now()}`,
       name: email.split('@')[0],
@@ -67,11 +84,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = () => {
+    clearAdminToken();
     setUser(null);
     showToast('Logged out successfully', 'info');
   };
 
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' && !!getAdminToken();
 
   return (
     <AuthContext.Provider value={{ user, login, logout, register, isAdmin }}>

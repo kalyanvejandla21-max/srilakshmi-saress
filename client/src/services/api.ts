@@ -1,6 +1,6 @@
-import { Product, Order, Coupon, Review, ReturnRequest, SiteSettings, Announcement } from '../types';
+import { Product, Order, Coupon, SiteSettings, Announcement } from '../types';
 
-// Mock Initial Data Seed for catalog
+// Mock Initial Data Seed for catalog (clearly flagged with isDemo: true)
 export const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'prod-1',
@@ -25,8 +25,10 @@ export const INITIAL_PRODUCTS: Product[] = [
     isBestSeller: true,
     isFeatured: true,
     isActive: true,
+    isDemo: true,
     rating: 4.9,
-    reviewsCount: 14
+    reviewsCount: 14,
+    createdAt: new Date().toISOString()
   },
   {
     id: 'prod-2',
@@ -51,8 +53,10 @@ export const INITIAL_PRODUCTS: Product[] = [
     isBestSeller: true,
     isFeatured: true,
     isActive: true,
+    isDemo: true,
     rating: 5.0,
-    reviewsCount: 9
+    reviewsCount: 9,
+    createdAt: new Date().toISOString()
   },
   {
     id: 'prod-3',
@@ -77,8 +81,10 @@ export const INITIAL_PRODUCTS: Product[] = [
     isBestSeller: true,
     isFeatured: true,
     isActive: true,
+    isDemo: true,
     rating: 4.7,
-    reviewsCount: 22
+    reviewsCount: 22,
+    createdAt: new Date().toISOString()
   },
   {
     id: 'prod-4',
@@ -103,8 +109,10 @@ export const INITIAL_PRODUCTS: Product[] = [
     isBestSeller: true,
     isFeatured: true,
     isActive: true,
+    isDemo: true,
     rating: 5.0,
-    reviewsCount: 31
+    reviewsCount: 31,
+    createdAt: new Date().toISOString()
   },
   {
     id: 'prod-5',
@@ -129,8 +137,10 @@ export const INITIAL_PRODUCTS: Product[] = [
     isBestSeller: true,
     isFeatured: true,
     isActive: true,
+    isDemo: true,
     rating: 4.8,
-    reviewsCount: 18
+    reviewsCount: 18,
+    createdAt: new Date().toISOString()
   },
   {
     id: 'prod-6',
@@ -155,8 +165,10 @@ export const INITIAL_PRODUCTS: Product[] = [
     isBestSeller: false,
     isFeatured: true,
     isActive: true,
+    isDemo: true,
     rating: 4.9,
-    reviewsCount: 8
+    reviewsCount: 8,
+    createdAt: new Date().toISOString()
   },
   {
     id: 'prod-7',
@@ -181,8 +193,10 @@ export const INITIAL_PRODUCTS: Product[] = [
     isBestSeller: true,
     isFeatured: false,
     isActive: true,
+    isDemo: true,
     rating: 4.6,
-    reviewsCount: 27
+    reviewsCount: 27,
+    createdAt: new Date().toISOString()
   },
   {
     id: 'prod-8',
@@ -207,14 +221,16 @@ export const INITIAL_PRODUCTS: Product[] = [
     isBestSeller: false,
     isFeatured: true,
     isActive: true,
+    isDemo: true,
     rating: 4.9,
-    reviewsCount: 12
+    reviewsCount: 12,
+    createdAt: new Date().toISOString()
   }
 ];
 
 export const INITIAL_ANNOUNCEMENT: Announcement = {
   id: 'ann-1',
-  message: '✨ ✨ Grand Festive Offer: Use code LAKSHMI10 for Flat 10% Off on All Pure Silk Sarees | Free Express Shipping across India',
+  message: '✨ Grand Festive Offer: Use code LAKSHMI10 for Flat 10% Off on All Pure Silk Sarees | Free Express Shipping across India',
   isActive: true,
   linkText: 'Shop Silk Sarees →',
   linkUrl: '/shop?category=Silk+Sarees'
@@ -258,17 +274,17 @@ export const INITIAL_COUPONS: Coupon[] = [
   }
 ];
 
-// Helper functions to manage client-side persistent state (Fallback when backend API is offline)
+// Local storage keys for client caching
 const STORAGE_KEYS = {
   PRODUCTS: 'sls_products',
   ANNOUNCEMENT: 'sls_announcement',
   SETTINGS: 'sls_settings',
   COUPONS: 'sls_coupons',
   ORDERS: 'sls_orders',
-  WISHLIST: 'sls_wishlist',
-  RETURNS: 'sls_returns'
+  ADMIN_TOKEN: 'sls_admin_token'
 };
 
+// Safe access to client storage
 export const getStoredProducts = (): Product[] => {
   const data = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
   if (!data) {
@@ -308,40 +324,76 @@ export const getStoredOrders = (): Order[] => {
 
 export const saveOrder = (order: Order) => {
   const orders = getStoredOrders();
-  orders.unshift(order);
+  const existingIndex = orders.findIndex((o) => o.orderNumber === order.orderNumber || o.id === order.id);
+  if (existingIndex >= 0) {
+    orders[existingIndex] = order;
+  } else {
+    orders.unshift(order);
+  }
   localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(orders));
 };
 
+export const getAdminToken = (): string | null => {
+  return localStorage.getItem(STORAGE_KEYS.ADMIN_TOKEN) || sessionStorage.getItem(STORAGE_KEYS.ADMIN_TOKEN);
+};
+
+export const setAdminToken = (token: string, persist: boolean = true) => {
+  if (persist) {
+    localStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, token);
+  } else {
+    sessionStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, token);
+  }
+};
+
+export const clearAdminToken = () => {
+  localStorage.removeItem(STORAGE_KEYS.ADMIN_TOKEN);
+  sessionStorage.removeItem(STORAGE_KEYS.ADMIN_TOKEN);
+};
+
 // --- PRODUCTION BACKEND API INTEGRATION ---
-// Configurable via Vite environment variable VITE_API_BASE_URL (defaults to empty string for relative proxy)
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
-// Create an order on the Express backend, falling back gracefully to localStorage
-export const createOrderOnServer = async (orderPayload: Partial<Order>): Promise<Order> => {
+// Fetch products from backend with fallback
+export const fetchProductsFromServer = async (): Promise<Product[]> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/orders`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(orderPayload),
-    });
-
+    const response = await fetch(`${API_BASE_URL}/api/products`);
     if (response.ok) {
       const data = await response.json();
-      if (data.success && data.order) {
-        saveOrder(data.order);
-        return data.order;
+      if (data.success && Array.isArray(data.products) && data.products.length > 0) {
+        saveStoredProducts(data.products);
+        return data.products;
       }
     }
   } catch (err) {
-    console.warn('Backend API unavailable. Saving order securely to client storage:', err);
+    console.warn('Could not reach backend product catalog. Using cached catalog:', err);
+  }
+  return getStoredProducts();
+};
+
+// Create an order on the Express backend
+// STRICT DATA-INTEGRITY RULE: Never fake a successful confirmation when backend fails.
+export const createOrderOnServer = async (orderPayload: Partial<Order>): Promise<Order> => {
+  const response = await fetch(`${API_BASE_URL}/api/orders`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(orderPayload),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const errorMessage = data.error || `Server returned error (${response.status}). Could not securely record order.`;
+    throw new Error(errorMessage);
   }
 
-  // Graceful offline fallback
-  const fallbackOrder = orderPayload as Order;
-  saveOrder(fallbackOrder);
-  return fallbackOrder;
+  if (data.success && data.order) {
+    saveOrder(data.order);
+    return data.order;
+  }
+
+  throw new Error('Unexpected response format from order processing service');
 };
 
 // Check backend API health status
@@ -357,28 +409,182 @@ export const checkApiHealth = async () => {
   }
 };
 
-// Fetch order from server with fallback to localStorage
-export const fetchOrderFromServer = async (idOrNumber: string): Promise<Order | null> => {
+export interface TrackOrderResult {
+  success: boolean;
+  isVerified: boolean;
+  order: Order;
+  message?: string;
+}
+
+// Fetch order from server with privacy protection
+export const fetchOrderFromServer = async (
+  idOrNumber: string,
+  phoneQuery?: string
+): Promise<TrackOrderResult | null> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/orders/${encodeURIComponent(idOrNumber)}`);
+    const url = new URL(`${API_BASE_URL || window.location.origin}/api/orders/${encodeURIComponent(idOrNumber)}`);
+    if (phoneQuery && phoneQuery.trim()) {
+      url.searchParams.set('phone', phoneQuery.trim());
+    }
+
+    const response = await fetch(url.toString());
     if (response.ok) {
       const data = await response.json();
       if (data.success && data.order) {
-        return data.order;
+        return {
+          success: true,
+          isVerified: !!data.isVerified,
+          order: data.order,
+          message: data.message
+        };
       }
     }
-  } catch {
-    // Ignore server error and fall through to local storage
+  } catch (err) {
+    console.warn('Could not reach backend order tracking endpoint:', err);
   }
 
+  // Fallback to client localStorage for development/offline testing
   const localOrders = getStoredOrders();
   const cleanQuery = idOrNumber.trim().toUpperCase();
-  return (
-    localOrders.find(
-      (o) =>
-        (o.orderNumber && o.orderNumber.toUpperCase() === cleanQuery) ||
-        (o.id && o.id.toUpperCase() === cleanQuery)
-    ) || null
+  const matched = localOrders.find(
+    (o) =>
+      (o.orderNumber && o.orderNumber.toUpperCase() === cleanQuery) ||
+      (o.id && o.id.toUpperCase() === cleanQuery)
   );
+
+  if (matched) {
+    return {
+      success: true,
+      isVerified: true,
+      order: matched
+    };
+  }
+
+  return null;
 };
 
+// --- ADMIN API SERVICES ---
+
+export const adminLoginApi = async (email: string, password: string): Promise<{ token: string; email: string }> => {
+  const response = await fetch(`${API_BASE_URL}/api/admin/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Invalid administrator login credentials');
+  }
+
+  if (data.success && data.token) {
+    setAdminToken(data.token);
+    return { token: data.token, email: data.admin?.email || email };
+  }
+
+  throw new Error('Failed to retrieve authentication token');
+};
+
+export const adminGetOrdersApi = async (): Promise<Order[]> => {
+  const token = getAdminToken();
+  if (!token) throw new Error('Admin authentication required');
+
+  const response = await fetch(`${API_BASE_URL}/api/admin/orders`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'Failed to fetch admin orders');
+
+  return data.orders || [];
+};
+
+export const adminUpdateOrderStatusApi = async (
+  idOrNumber: string,
+  updates: Partial<Order>
+): Promise<Order> => {
+  const token = getAdminToken();
+  if (!token) throw new Error('Admin authentication required');
+
+  const response = await fetch(`${API_BASE_URL}/api/admin/orders/${encodeURIComponent(idOrNumber)}/status`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify(updates)
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'Failed to update order status');
+
+  return data.order;
+};
+
+export const adminCreateProductApi = async (productData: Partial<Product>): Promise<Product> => {
+  const token = getAdminToken();
+  if (!token) throw new Error('Admin authentication required');
+
+  const response = await fetch(`${API_BASE_URL}/api/admin/products`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify(productData)
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'Failed to create product');
+
+  return data.product;
+};
+
+export const adminUpdateProductApi = async (id: string, updates: Partial<Product>): Promise<Product> => {
+  const token = getAdminToken();
+  if (!token) throw new Error('Admin authentication required');
+
+  const response = await fetch(`${API_BASE_URL}/api/admin/products/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify(updates)
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'Failed to update product');
+
+  return data.product;
+};
+
+export const adminArchiveProductApi = async (id: string): Promise<boolean> => {
+  const token = getAdminToken();
+  if (!token) throw new Error('Admin authentication required');
+
+  const response = await fetch(`${API_BASE_URL}/api/admin/products/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'Failed to archive product');
+
+  return true;
+};
+
+export const adminResetDemoCatalogApi = async (): Promise<boolean> => {
+  const token = getAdminToken();
+  if (!token) throw new Error('Admin authentication required');
+
+  const response = await fetch(`${API_BASE_URL}/api/admin/products/reset-demo`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'Failed to reset demo catalog');
+
+  return true;
+};

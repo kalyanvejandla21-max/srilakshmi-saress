@@ -1,0 +1,9 @@
+# Sri Lakshmi Sarees - Robots.txt
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /checkout
+Disallow: /order-confirmation/
+Disallow: /account
+
+Sitemap: https://srilakshmi-saress.vercel.app/sitemap.xml

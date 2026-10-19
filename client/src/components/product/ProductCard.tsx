@@ -32,6 +32,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onQuickView }
             {discountPercent > 0 && (
               <span className="badge badge-sale">{discountPercent}% OFF</span>
             )}
+            {product.isDemo && (
+              <span className="badge" style={{ backgroundColor: '#D97706', color: '#FFFFFF' }}>Demo</span>
+            )}
             {product.isNewArrival && <span className="badge badge-new">New</span>}
             {product.isBestSeller && <span className="badge badge-bestseller">Best Seller</span>}
           </>

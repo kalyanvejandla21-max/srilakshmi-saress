@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Package, Truck, CheckCircle2, Clock, MapPin, AlertCircle, ExternalLink } from 'lucide-react';
+import { Search, Package, Truck, CheckCircle2, Clock, MapPin, AlertCircle, ExternalLink, ShieldCheck, Lock, Loader2 } from 'lucide-react';
 import { Order, OrderStatus } from '../types';
-import { getStoredOrders, fetchOrderFromServer } from '../services/api';
+import { fetchOrderFromServer, TrackOrderResult } from '../services/api';
 
 export const TrackOrderPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const [orderQuery, setOrderQuery] = useState(searchParams.get('order') || '');
   const [phoneQuery, setPhoneQuery] = useState('');
   const [foundOrder, setFoundOrder] = useState<Order | null>(null);
+  const [isVerified, setIsVerified] = useState<boolean>(false);
+  const [verificationMessage, setVerificationMessage] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [searched, setSearched] = useState(false);
 
   useEffect(() => {
@@ -20,29 +23,30 @@ export const TrackOrderPage: React.FC = () => {
 
   const searchOrder = async (ordNum: string, phone: string) => {
     const cleanOrd = ordNum.trim().toUpperCase();
-    
-    // First attempt to fetch from backend API
-    let matched: Order | null = null;
+    if (!cleanOrd) return;
+
+    setIsLoading(true);
+    setSearched(false);
+
     try {
-      matched = await fetchOrderFromServer(cleanOrd);
+      const result: TrackOrderResult | null = await fetchOrderFromServer(cleanOrd, phone);
+      if (result && result.order) {
+        setFoundOrder(result.order);
+        setIsVerified(result.isVerified);
+        setVerificationMessage(result.message || null);
+      } else {
+        setFoundOrder(null);
+        setIsVerified(false);
+        setVerificationMessage(null);
+      }
     } catch {
-      matched = null;
+      setFoundOrder(null);
+      setIsVerified(false);
+      setVerificationMessage(null);
+    } finally {
+      setIsLoading(false);
+      setSearched(true);
     }
-
-    // Fall back to client localStorage if not found on server
-    if (!matched) {
-      const orders = getStoredOrders();
-      matched = orders.find((o) => {
-        const matchNo = o.orderNumber.toUpperCase() === cleanOrd || o.id === ordNum;
-        if (phone.trim()) {
-          return matchNo && o.shippingAddress.phone.includes(phone.trim());
-        }
-        return matchNo;
-      }) || null;
-    }
-
-    setFoundOrder(matched);
-    setSearched(true);
   };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -78,7 +82,7 @@ export const TrackOrderPage: React.FC = () => {
             Track Your Saree Order
           </h1>
           <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9375rem', marginTop: '0.5rem' }}>
-            Enter your order number to trace live dispatch and courier status.
+            Enter your order number and mobile phone number to trace live dispatch and delivery updates.
           </p>
         </div>
 
@@ -98,18 +102,32 @@ export const TrackOrderPage: React.FC = () => {
             </div>
 
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">Registered Phone Number (Optional)</label>
+              <label className="form-label">Registered Phone Number</label>
               <input
                 type="tel"
                 placeholder="10-digit Mobile Number"
                 value={phoneQuery}
                 onChange={(e) => setPhoneQuery(e.target.value)}
+                maxLength={10}
                 className="form-input"
               />
             </div>
 
-            <button type="submit" className="btn-primary" style={{ padding: '0.75rem 1.5rem', height: '44px' }}>
-              <Search size={18} /> Track Order
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={isLoading}
+              style={{ padding: '0.75rem 1.5rem', height: '44px', opacity: isLoading ? 0.7 : 1 }}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" /> Searching...
+                </>
+              ) : (
+                <>
+                  <Search size={18} /> Track Order
+                </>
+              )}
             </button>
           </form>
         </div>
@@ -121,10 +139,10 @@ export const TrackOrderPage: React.FC = () => {
               <div style={{ backgroundColor: '#FFFFFF', padding: '3rem 2rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', textAlign: 'center' }}>
                 <AlertCircle size={44} color="var(--color-danger)" style={{ margin: '0 auto 1rem' }} />
                 <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.25rem', color: 'var(--color-maroon)', marginBottom: '0.5rem' }}>
-                  No Order Found Matching "#{orderQuery}"
+                  No Order Found Matching "{orderQuery}"
                 </h3>
                 <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
-                  Please check your order confirmation SMS/Email or contact support if you need assistance.
+                  Please verify your order number from your confirmation SMS/Email, or contact customer support on WhatsApp for quick assistance.
                 </p>
               </div>
             ) : (
@@ -144,6 +162,27 @@ export const TrackOrderPage: React.FC = () => {
                     Status: {foundOrder.orderStatus}
                   </div>
                 </div>
+
+                {/* Privacy Warning Banner if unverified */}
+                {!isVerified && (
+                  <div style={{
+                    backgroundColor: '#FFFBEB',
+                    border: '1px solid #FCD34D',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '1rem',
+                    marginBottom: '1.5rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    fontSize: '0.875rem',
+                    color: '#92400E'
+                  }}>
+                    <Lock size={18} style={{ flexShrink: 0 }} />
+                    <div>
+                      <strong>Privacy Protected View:</strong> Exact delivery address and invoices are concealed. Enter the registered 10-digit mobile number above to unlock full invoice details.
+                    </div>
+                  </div>
+                )}
 
                 {/* Progress Stepper */}
                 <div className="tracking-stepper-container">
@@ -173,7 +212,7 @@ export const TrackOrderPage: React.FC = () => {
                 </div>
 
                 {/* Courier & AWB Details */}
-                <div style={{ backgroundColor: 'var(--bg-primary)', padding: '1.25rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', fontSize: '0.875rem' }}>
+                <div style={{ backgroundColor: 'var(--bg-primary)', padding: '1.25rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
                   <div>
                     <strong style={{ color: 'var(--color-maroon)' }}>Courier Partner:</strong>
                     <div>{foundOrder.courierName || 'Shiprocket Express Courier'}</div>
@@ -185,10 +224,37 @@ export const TrackOrderPage: React.FC = () => {
                   </div>
 
                   <div>
-                    <strong style={{ color: 'var(--color-maroon)' }}>Delivery Address:</strong>
-                    <div>{foundOrder.shippingAddress.fullName}, {foundOrder.shippingAddress.city}</div>
+                    <strong style={{ color: 'var(--color-maroon)' }}>Destination Hub:</strong>
+                    <div>
+                      {foundOrder.shippingAddress?.fullName ? `${foundOrder.shippingAddress.fullName}, ` : ''}
+                      {foundOrder.shippingAddress?.city || 'Regional Center'}
+                    </div>
                   </div>
                 </div>
+
+                {/* Items in shipment */}
+                {foundOrder.items && foundOrder.items.length > 0 && (
+                  <div>
+                    <h4 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--color-maroon)', marginBottom: '0.75rem' }}>
+                      Shipment Contents:
+                    </h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      {foundOrder.items.map((item, idx) => (
+                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.875rem', padding: '0.5rem 0', borderBottom: '1px solid var(--color-border)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            {item.image && (
+                              <img src={item.image} alt="" style={{ width: '40px', height: '50px', objectFit: 'cover', borderRadius: '4px' }} />
+                            )}
+                            <span>{item.productName} × {item.quantity}</span>
+                          </div>
+                          {isVerified && item.lineTotal ? (
+                            <span style={{ fontWeight: 700 }}>₹{item.lineTotal.toLocaleString('en-IN')}</span>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

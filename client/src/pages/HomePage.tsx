@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Sparkles, ShieldCheck, HeartHandshake, Award, Star, Truck, CheckCircle2 } from 'lucide-react';
 import { ProductCard } from '../components/product/ProductCard';
@@ -6,11 +6,17 @@ import { QuickViewModal } from '../components/product/QuickViewModal';
 import { FloralHero } from '../components/hero/FloralHero';
 import { CategoryCarousel } from '../components/category/CategoryCarousel';
 import { Product } from '../types';
-import { getStoredProducts } from '../services/api';
+import { getStoredProducts, fetchProductsFromServer } from '../services/api';
 
 export const HomePage: React.FC = () => {
-  const [products] = useState<Product[]>(getStoredProducts);
+  const [products, setProducts] = useState<Product[]>(getStoredProducts);
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
+
+  useEffect(() => {
+    fetchProductsFromServer().then((data) => {
+      if (data && data.length > 0) setProducts(data);
+    });
+  }, []);
 
   const newArrivals = products.filter((p) => p.isNewArrival).slice(0, 4);
   const bestSellers = products.filter((p) => p.isBestSeller).slice(0, 4);

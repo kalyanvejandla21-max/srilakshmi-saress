@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, Truck, CreditCard, Banknote, Lock, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, Truck, CreditCard, Banknote, Lock, ArrowRight, CheckCircle2, AlertCircle, Loader2, RefreshCw } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Order, ShippingAddress } from '../types';
-import { saveOrder, createOrderOnServer } from '../services/api';
+import { createOrderOnServer } from '../services/api';
 
 export const CheckoutPage: React.FC = () => {
   const { cart, subtotal, appliedCoupon, discountAmount, finalTotal, clearCart } = useCart();
@@ -28,6 +28,8 @@ export const CheckoutPage: React.FC = () => {
   const [email, setEmail] = useState(user?.email || '');
   const [paymentMethod, setPaymentMethod] = useState<'Prepaid' | 'COD'>('Prepaid');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [idempotencyKey] = useState<string>(() => `idemp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`);
 
   if (cart.length === 0) {
     return (
@@ -54,6 +56,7 @@ export const CheckoutPage: React.FC = () => {
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
 
     // Validation
     if (!address.fullName || !address.phone || !address.pincode || !address.houseNo || !address.street || !address.city || !address.state) {
@@ -61,59 +64,52 @@ export const CheckoutPage: React.FC = () => {
       return;
     }
 
-    if (!/^\d{10}$/.test(address.phone)) {
-      showToast('Please enter a valid 10-digit mobile phone number.', 'error');
+    const cleanPhone = address.phone.replace(/\D/g, '');
+    if (cleanPhone.length !== 10) {
+      showToast('Please enter a valid 10-digit Indian mobile number.', 'error');
       return;
     }
 
-    if (!/^\d{6}$/.test(address.pincode)) {
+    const cleanPincode = address.pincode.replace(/\D/g, '');
+    if (cleanPincode.length !== 6) {
       showToast('Please enter a valid 6-digit Indian PIN Code.', 'error');
       return;
     }
 
     setIsSubmitting(true);
 
-    // Create unique order number
-    const orderNumber = `SLS-${Math.floor(100000 + Math.random() * 900000)}`;
-
-    const newOrder: Order = {
-      id: `ord-${Date.now()}`,
-      orderNumber,
+    const orderPayload: Partial<Order> = {
       userId: user?.id,
-      guestEmail: email,
+      guestEmail: email || '',
       items: cart.map((item) => ({
         productId: item.product.id,
         productName: item.product.name,
-        image: item.product.images[0],
+        image: item.product.images[0] || '',
         price: item.product.price,
         quantity: item.quantity,
         lineTotal: item.product.price * item.quantity
       })),
-      subtotal,
-      shippingCharge: shippingFee,
-      discount: discountAmount,
-      couponCode: appliedCoupon?.code,
-      finalTotal,
-      shippingAddress: address,
+      shippingAddress: {
+        ...address,
+        phone: cleanPhone,
+        pincode: cleanPincode
+      },
       paymentMethod,
-      paymentStatus: paymentMethod === 'COD' ? 'Pending' : 'Paid',
-      orderStatus: 'Order Placed',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      couponCode: appliedCoupon?.code,
+      idempotencyKey
     };
 
     try {
-      const confirmedOrder = await createOrderOnServer(newOrder);
+      const confirmedOrder = await createOrderOnServer(orderPayload);
       clearCart();
       setIsSubmitting(false);
       showToast(`Order #${confirmedOrder.orderNumber} confirmed successfully!`, 'success');
       navigate(`/order-confirmation/${confirmedOrder.orderNumber}`, { state: { order: confirmedOrder } });
-    } catch {
-      saveOrder(newOrder);
-      clearCart();
+    } catch (err: any) {
       setIsSubmitting(false);
-      showToast(`Order #${orderNumber} confirmed successfully!`, 'success');
-      navigate(`/order-confirmation/${orderNumber}`, { state: { order: newOrder } });
+      const errorMsg = err.message || 'We could not securely confirm your order with the database. Please try again.';
+      setSubmitError(errorMsg);
+      showToast(errorMsg, 'error');
     }
   };
 
@@ -123,6 +119,33 @@ export const CheckoutPage: React.FC = () => {
         <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '2.25rem', color: 'var(--color-maroon)', marginBottom: '2rem', textAlign: 'center' }}>
           Secure Checkout
         </h1>
+
+        {submitError && (
+          <div style={{
+            backgroundColor: '#FEF2F2',
+            border: '1px solid #FCA5A5',
+            borderRadius: 'var(--radius-md)',
+            padding: '1.25rem 1.5rem',
+            marginBottom: '2rem',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '1rem',
+            color: '#991B1B'
+          }}>
+            <AlertCircle size={24} style={{ flexShrink: 0, marginTop: '2px' }} />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.25rem' }}>
+                Order Could Not Be Confirmed
+              </div>
+              <div style={{ fontSize: '0.875rem', lineHeight: 1.6, marginBottom: '0.75rem' }}>
+                {submitError}
+              </div>
+              <div style={{ fontSize: '0.8125rem', color: '#7F1D1D' }}>
+                Your cart and entered address details have been preserved. Please check your connection and click "Place Order" again to retry.
+              </div>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleFormSubmit} className="checkout-form-grid">
           {/* Left Column: Customer Address & Details */}

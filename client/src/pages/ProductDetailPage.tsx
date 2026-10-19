@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Heart, ShoppingBag, Truck, ShieldCheck, RefreshCw, Star, CheckCircle, MapPin, Share2 } from 'lucide-react';
 import { ProductCard } from '../components/product/ProductCard';
 import { Product } from '../types';
-import { getStoredProducts } from '../services/api';
+import { getStoredProducts, fetchProductsFromServer } from '../services/api';
 import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
 import { useToast } from '../context/ToastContext';
@@ -15,12 +15,18 @@ export const ProductDetailPage: React.FC = () => {
   const { toggleWishlist, isInWishlist } = useWishlist();
   const { showToast } = useToast();
 
-  const [products] = useState<Product[]>(getStoredProducts);
+  const [products, setProducts] = useState<Product[]>(getStoredProducts);
   const [selectedImage, setSelectedImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [pincode, setPincode] = useState('');
   const [pincodeResult, setPincodeResult] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'details' | 'shipping' | 'reviews'>('details');
+
+  useEffect(() => {
+    fetchProductsFromServer().then((data) => {
+      if (data && data.length > 0) setProducts(data);
+    });
+  }, []);
 
   const product = products.find((p) => p.slug === slug || p.id === slug);
 
@@ -117,9 +123,16 @@ export const ProductDetailPage: React.FC = () => {
           <div className="pdp-info-column">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-gold-dark)', fontWeight: 700 }}>
-                  {product.category} • SKU: {product.sku}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                  <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-gold-dark)', fontWeight: 700 }}>
+                    {product.category} • SKU: {product.sku}
+                  </span>
+                  {product.isDemo && (
+                    <span style={{ fontSize: '0.6875rem', backgroundColor: '#FEF3C7', color: '#92400E', padding: '0.15rem 0.5rem', borderRadius: '4px', fontWeight: 700, textTransform: 'uppercase' }}>
+                      Demo Saree
+                    </span>
+                  )}
+                </div>
                 <h1 className="pdp-title">
                   {product.name}
                 </h1>
