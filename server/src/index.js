@@ -10,6 +10,15 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 
 import { INITIAL_PRODUCTS, INITIAL_COUPONS, INITIAL_ANNOUNCEMENT } from './seedData.js';
+import {
+  isShiprocketConfigured,
+  getPickupLocations,
+  checkCourierServiceability,
+  createShiprocketOrder,
+  assignAwbToShipment,
+  scheduleCourierPickup,
+  trackAwbNumber,
+} from './shiprocket.js';
 
 // Load environment variables from .env
 dotenv.config();
@@ -109,7 +118,13 @@ app.use(
   })
 );
 
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
 
 // Serve static uploaded product images if any
 const uploadsDir = path.join(__dirname, '../uploads');
@@ -199,10 +214,14 @@ const OrderSchema = new mongoose.Schema(
     paymentMethod: { type: String, default: 'COD' },
     paymentStatus: { type: String, default: 'Pending' },
     orderStatus: { type: String, default: 'Order Placed' },
-    courierName: { type: String, default: 'Shiprocket Express Courier' },
+    courierName: { type: String, default: '' },
     awbNumber: { type: String, default: '' },
     trackingUrl: { type: String, default: '' },
     shipmentId: { type: String, default: '' },
+    razorpayOrderId: { type: String, default: null, index: true },
+    razorpayPaymentId: { type: String, default: null, index: true },
+    razorpaySignature: { type: String, default: null },
+    paymentFailureReason: { type: String, default: null },
     idempotencyKey: { type: String, default: null, index: true },
     createdAt: { type: String, default: () => new Date().toISOString() },
     updatedAt: { type: String, default: () => new Date().toISOString() },
@@ -612,7 +631,6 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
     const authoritativeFinalTotal = Math.max(0, authoritativeSubtotal - authoritativeDiscount + shippingCharge);
 
     const orderNumber = await generateUniqueOrderNumber();
-    const awbNumber = `AWB${Math.floor(100000000 + Math.random() * 900000000)}`;
 
     const newOrder = {
       id: `ord-${Date.now()}`,
@@ -630,12 +648,16 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
         phone: cleanPhone,
       },
       paymentMethod: paymentMethod || 'COD',
-      paymentStatus: paymentMethod === 'COD' ? 'Pending' : 'Paid',
+      paymentStatus: 'Pending',
       orderStatus: 'Order Placed',
-      courierName: 'Shiprocket Express Courier',
-      awbNumber,
-      trackingUrl: `https://shiprocket.co/tracking/${awbNumber}`,
-      shipmentId: `SR-SHIP-${Date.now()}`,
+      courierName: '',
+      awbNumber: '',
+      trackingUrl: '',
+      shipmentId: '',
+      razorpayOrderId: null,
+      razorpayPaymentId: null,
+      razorpaySignature: null,
+      paymentFailureReason: null,
       idempotencyKey: idempotencyKey || null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -1085,59 +1107,400 @@ app.post('/api/admin/products/reset-demo', authenticateAdmin, async (req, res) =
 // --- PAYMENT & SHIPPING INTEGRATION BOUNDARIES ---
 // ==========================================
 
-// Razorpay Payment Verification Endpoint (HMAC SHA256 Signature Check)
-app.post('/api/payments/verify-razorpay', (req, res) => {
-  const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
-  const secret = process.env.RAZORPAY_KEY_SECRET;
+// Razorpay Order Creation Endpoint (Authoritative Server-side creation)
+app.post('/api/payments/create-razorpay-order', orderLimiter, async (req, res) => {
+  try {
+    const { orderNumber } = req.body;
+    if (!orderNumber) {
+      return res.status(400).json({ error: 'orderNumber is required' });
+    }
 
-  if (!secret || secret === 'test_razorpay_secret_key') {
-    return res.status(400).json({
-      success: false,
-      code: 'GATEWAY_NOT_CONFIGURED',
-      message: 'Razorpay payment key secret is not configured in the server environment. Please set up merchant credentials on Render.',
+    const keyId = process.env.RAZORPAY_KEY_ID;
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+    if (!keyId || !keySecret || keySecret === 'test_razorpay_secret_key') {
+      return res.status(400).json({
+        success: false,
+        code: 'GATEWAY_NOT_CONFIGURED',
+        message: 'Razorpay payment keys are not configured in the server environment. Please set up merchant credentials on Render.',
+      });
+    }
+
+    let order = null;
+    if (isMongoReady()) {
+      order = await OrderModel.findOne({ orderNumber }).lean();
+    } else {
+      const db = getDbData();
+      order = (db.orders || []).find((o) => o.orderNumber === orderNumber);
+    }
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (order.paymentStatus === 'Paid') {
+      return res.status(400).json({ error: 'Order has already been paid and confirmed' });
+    }
+
+    const amountInPaise = Math.round(Number(order.finalTotal) * 100);
+    if (amountInPaise <= 0) {
+      return res.status(400).json({ error: 'Invalid order amount for online payment' });
+    }
+
+    const authHeader = Buffer.from(`${keyId.trim()}:${keySecret.trim()}`).toString('base64');
+    const rzpResponse = await fetch('https://api.razorpay.com/v1/orders', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Basic ${authHeader}`,
+      },
+      body: JSON.stringify({
+        amount: amountInPaise,
+        currency: 'INR',
+        receipt: order.orderNumber,
+        notes: {
+          orderNumber: order.orderNumber,
+          customerPhone: order.shippingAddress?.phone || '',
+        },
+      }),
     });
-  }
 
-  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-    return res.status(400).json({ success: false, message: 'Missing payment signature parameters' });
-  }
+    const rzpData = await rzpResponse.json().catch(() => ({}));
+    if (!rzpResponse.ok || !rzpData.id) {
+      const errDetail = rzpData.error?.description || `Razorpay order creation failed (${rzpResponse.status})`;
+      return res.status(rzpResponse.status || 500).json({
+        error: 'Razorpay order creation failed',
+        details: errDetail,
+      });
+    }
 
-  const generatedSignature = crypto
-    .createHmac('sha256', secret)
-    .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-    .digest('hex');
+    // Persist razorpayOrderId in order record
+    if (isMongoReady()) {
+      await OrderModel.updateOne(
+        { orderNumber },
+        { $set: { razorpayOrderId: rzpData.id, updatedAt: new Date().toISOString() } }
+      );
+    } else {
+      const db = getDbData();
+      const localOrd = (db.orders || []).find((o) => o.orderNumber === orderNumber);
+      if (localOrd) {
+        localOrd.razorpayOrderId = rzpData.id;
+        localOrd.updatedAt = new Date().toISOString();
+        saveDbData(db);
+      }
+    }
 
-  const signatureBuffer = Buffer.from(generatedSignature);
-  const clientSignatureBuffer = Buffer.from(razorpay_signature);
-
-  if (
-    signatureBuffer.length === clientSignatureBuffer.length &&
-    crypto.timingSafeEqual(signatureBuffer, clientSignatureBuffer)
-  ) {
-    return res.json({ success: true, message: 'Payment signature verified successfully' });
-  } else {
-    return res.status(400).json({ success: false, message: 'Invalid payment signature verification failed' });
+    res.json({
+      success: true,
+      razorpayOrderId: rzpData.id,
+      amount: rzpData.amount,
+      currency: rzpData.currency,
+      keyId,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create Razorpay order', details: error.message });
   }
 });
 
-// Shiprocket Mock Courier Dispatch Adapter
-app.post('/api/shipments/create', (req, res) => {
-  const { orderId } = req.body;
+// Razorpay Payment Verification Endpoint (HMAC SHA256 Signature Check & Order Confirmation)
+app.post('/api/payments/verify-razorpay', async (req, res) => {
+  try {
+    const { orderNumber, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+    const secret = process.env.RAZORPAY_KEY_SECRET;
 
-  if (!orderId) {
-    return res.status(400).json({ error: 'orderId is required' });
+    if (!secret || secret === 'test_razorpay_secret_key') {
+      return res.status(400).json({
+        success: false,
+        code: 'GATEWAY_NOT_CONFIGURED',
+        message: 'Razorpay payment key secret is not configured in the server environment. Please set up merchant credentials on Render.',
+      });
+    }
+
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({ success: false, message: 'Missing payment signature parameters' });
+    }
+
+    const generatedSignature = crypto
+      .createHmac('sha256', secret.trim())
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest('hex');
+
+    const signatureBuffer = Buffer.from(generatedSignature);
+    const clientSignatureBuffer = Buffer.from(razorpay_signature);
+
+    const isMatch =
+      signatureBuffer.length === clientSignatureBuffer.length &&
+      crypto.timingSafeEqual(signatureBuffer, clientSignatureBuffer);
+
+    if (!isMatch) {
+      return res.status(400).json({ success: false, message: 'Invalid payment signature verification failed' });
+    }
+
+    // Payment Signature verified! Update order status to 'Paid' and 'Payment Confirmed'
+    const updateFields = {
+      paymentStatus: 'Paid',
+      orderStatus: 'Payment Confirmed',
+      razorpayPaymentId: razorpay_payment_id,
+      razorpayOrderId: razorpay_order_id,
+      razorpaySignature: razorpay_signature,
+      paymentFailureReason: null,
+      updatedAt: new Date().toISOString(),
+    };
+
+    let updatedOrder = null;
+    const query = orderNumber ? { orderNumber } : { razorpayOrderId: razorpay_order_id };
+
+    if (isMongoReady()) {
+      updatedOrder = await OrderModel.findOneAndUpdate(
+        query,
+        { $set: updateFields },
+        { new: true }
+      ).lean();
+      if (updatedOrder) delete updatedOrder._id;
+    } else {
+      const db = getDbData();
+      const localOrd = (db.orders || []).find(
+        (o) => (orderNumber && o.orderNumber === orderNumber) || o.razorpayOrderId === razorpay_order_id
+      );
+      if (localOrd) {
+        Object.assign(localOrd, updateFields);
+        saveDbData(db);
+        updatedOrder = localOrd;
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: 'Payment verified and order confirmed successfully',
+      order: updatedOrder,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to verify payment', details: error.message });
   }
+});
 
-  const awbNumber = `SR${Math.floor(1000000000 + Math.random() * 9000000000)}`;
+// Record Payment Failure Endpoint
+app.post('/api/payments/record-failure', async (req, res) => {
+  try {
+    const { orderNumber, reason, razorpay_order_id } = req.body;
+    if (!orderNumber && !razorpay_order_id) {
+      return res.status(400).json({ error: 'orderNumber or razorpay_order_id is required' });
+    }
 
-  res.json({
-    success: true,
-    shipmentId: `SR-SHIP-${Date.now()}`,
-    courierName: 'Delhivery Surface via Shiprocket',
-    awbNumber,
-    trackingUrl: `https://shiprocket.co/tracking/${awbNumber}`,
-    status: 'Pickup Scheduled',
-  });
+    const query = orderNumber ? { orderNumber } : { razorpayOrderId: razorpay_order_id };
+    const updateFields = {
+      paymentStatus: 'Failed',
+      paymentFailureReason: reason || 'Customer cancelled payment or transaction declined',
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (isMongoReady()) {
+      await OrderModel.updateOne(query, { $set: updateFields });
+    } else {
+      const db = getDbData();
+      const ord = (db.orders || []).find(
+        (o) => (orderNumber && o.orderNumber === orderNumber) || o.razorpayOrderId === razorpay_order_id
+      );
+      if (ord) {
+        Object.assign(ord, updateFields);
+        saveDbData(db);
+      }
+    }
+
+    res.json({ success: true, message: 'Payment failure recorded' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to record payment failure', details: error.message });
+  }
+});
+
+// Razorpay Webhook Callback Endpoint
+app.post('/api/payments/webhook', async (req, res) => {
+  try {
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    const signature = req.headers['x-razorpay-signature'];
+
+    if (webhookSecret && signature && req.rawBody) {
+      const expected = crypto
+        .createHmac('sha256', webhookSecret.trim())
+        .update(req.rawBody)
+        .digest('hex');
+
+      const expectedBuf = Buffer.from(expected);
+      const sigBuf = Buffer.from(signature);
+
+      if (expectedBuf.length !== sigBuf.length || !crypto.timingSafeEqual(expectedBuf, sigBuf)) {
+        console.warn('⚠️ Razorpay webhook signature verification failed');
+        return res.status(400).json({ error: 'Invalid webhook signature' });
+      }
+    }
+
+    const event = req.body.event;
+    const payload = req.body.payload;
+
+    if (event === 'payment.captured' || event === 'order.paid') {
+      const paymentEntity = payload?.payment?.entity;
+      const rzpOrderId = paymentEntity?.order_id || payload?.order?.entity?.id;
+      const paymentId = paymentEntity?.id;
+
+      if (rzpOrderId) {
+        const updateFields = {
+          paymentStatus: 'Paid',
+          orderStatus: 'Payment Confirmed',
+          ...(paymentId ? { razorpayPaymentId: paymentId } : {}),
+          updatedAt: new Date().toISOString(),
+        };
+
+        if (isMongoReady()) {
+          await OrderModel.updateOne({ razorpayOrderId: rzpOrderId }, { $set: updateFields });
+        } else {
+          const db = getDbData();
+          const ord = (db.orders || []).find((o) => o.razorpayOrderId === rzpOrderId);
+          if (ord) {
+            Object.assign(ord, updateFields);
+            saveDbData(db);
+          }
+        }
+      }
+    } else if (event === 'payment.failed') {
+      const paymentEntity = payload?.payment?.entity;
+      const rzpOrderId = paymentEntity?.order_id;
+      const failureReason = paymentEntity?.error_description || 'Payment failed';
+
+      if (rzpOrderId) {
+        if (isMongoReady()) {
+          await OrderModel.updateOne(
+            { razorpayOrderId: rzpOrderId },
+            { $set: { paymentStatus: 'Failed', paymentFailureReason: failureReason, updatedAt: new Date().toISOString() } }
+          );
+        }
+      }
+    }
+
+    res.json({ received: true });
+  } catch (error) {
+    console.error('Error processing Razorpay webhook:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Courier Serviceability Endpoint (Shiprocket Live Check with Clean Fallback)
+app.get('/api/shipments/serviceability', async (req, res) => {
+  try {
+    const { deliveryPincode, pickupPincode, cod } = req.query;
+    if (!deliveryPincode || !/^\d{6}$/.test(String(deliveryPincode))) {
+      return res.status(400).json({ error: 'Valid 6-digit delivery PIN code is required' });
+    }
+
+    if (!isShiprocketConfigured()) {
+      return res.json({
+        success: true,
+        isConfigured: false,
+        message: 'Standard express courier delivery available across India (3 - 5 business days).',
+      });
+    }
+
+    const result = await checkCourierServiceability({
+      deliveryPostcode: deliveryPincode,
+      pickupPostcode: pickupPincode || '631501',
+      cod: cod === '1' ? 1 : 0,
+    });
+
+    res.json({ success: true, isConfigured: true, ...result });
+  } catch (error) {
+    res.json({
+      success: true,
+      isConfigured: false,
+      message: 'Standard express courier delivery available across India (3 - 5 business days).',
+      error: error.message,
+    });
+  }
+});
+
+// Admin: Get Shiprocket Registered Pickup Locations
+app.get('/api/admin/shiprocket/pickup-locations', authenticateAdmin, async (req, res) => {
+  try {
+    if (!isShiprocketConfigured()) {
+      return res.status(400).json({
+        success: false,
+        code: 'SHIPROCKET_NOT_CONFIGURED',
+        message: 'Shiprocket email/password is not configured in server environment. Please set SHIPROCKET_EMAIL and SHIPROCKET_PASSWORD on Render.',
+      });
+    }
+
+    const locations = await getPickupLocations();
+    res.json({ success: true, locations });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to retrieve pickup locations from Shiprocket', details: error.message });
+  }
+});
+
+// Admin: Dispatch Order via Shiprocket (Adhoc creation + AWB assignment)
+app.post('/api/admin/orders/:id/dispatch-shiprocket', authenticateAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { pickupLocation } = req.body;
+
+    if (!isShiprocketConfigured()) {
+      return res.status(400).json({
+        success: false,
+        code: 'SHIPROCKET_NOT_CONFIGURED',
+        message: 'Shiprocket credentials are not configured on server. Please configure SHIPROCKET_EMAIL and SHIPROCKET_PASSWORD on Render.',
+      });
+    }
+
+    let order = null;
+    if (isMongoReady()) {
+      order = await OrderModel.findOne({ $or: [{ id }, { orderNumber: id }] }).lean();
+    } else {
+      const db = getDbData();
+      order = (db.orders || []).find((o) => o.id === id || o.orderNumber === id);
+    }
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // 1. Create order in Shiprocket
+    const srOrderResult = await createShiprocketOrder(order, pickupLocation);
+
+    // 2. Assign AWB to shipment
+    let awbResult = null;
+    try {
+      awbResult = await assignAwbToShipment(srOrderResult.shipmentId);
+    } catch (awbErr) {
+      console.warn('AWB assignment notice:', awbErr.message);
+    }
+
+    // 3. Update database record with official Shiprocket details
+    const updateFields = {
+      shipmentId: String(srOrderResult.shipmentId),
+      orderStatus: 'Ready for Pickup',
+      courierName: awbResult?.courierName || 'Shiprocket Partner Courier',
+      awbNumber: awbResult?.awbCode || '',
+      trackingUrl: awbResult?.trackingUrl || `https://shiprocket.co/tracking/${srOrderResult.shipmentId}`,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (isMongoReady()) {
+      const updated = await OrderModel.findOneAndUpdate(
+        { $or: [{ id }, { orderNumber: id }] },
+        { $set: updateFields },
+        { new: true }
+      ).lean();
+      if (updated) delete updated._id;
+      return res.json({ success: true, order: updated, shiprocket: srOrderResult, awb: awbResult });
+    } else {
+      const db = getDbData();
+      const localOrd = (db.orders || []).find((o) => o.id === id || o.orderNumber === id);
+      if (localOrd) {
+        Object.assign(localOrd, updateFields);
+        saveDbData(db);
+      }
+      return res.json({ success: true, order: localOrd, shiprocket: srOrderResult, awb: awbResult });
+    }
+  } catch (error) {
+    res.status(500).json({ error: 'Shiprocket dispatch failed', details: error.message });
+  }
 });
 
 // Shiprocket Webhook Callback Endpoint

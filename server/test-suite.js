@@ -220,6 +220,96 @@ async function runTests() {
     }
   });
 
+  // 11. Payment Status Safety: New orders start Pending with no fake AWB
+  let prepaidOrderNumber = null;
+  await assertTest('POST /api/orders enforces paymentStatus = Pending and no fake AWB on creation', async () => {
+    const res = await fetch(`${BASE_URL}/api/orders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: [{ productId: 'prod-1', quantity: 1 }],
+        shippingAddress: {
+          fullName: 'Test Customer',
+          phone: '9876543210',
+          pincode: '600001',
+          houseNo: '10',
+          street: 'Gandhi Road',
+          city: 'Chennai',
+          state: 'Tamil Nadu'
+        },
+        paymentMethod: 'Prepaid'
+      })
+    });
+
+    if (!res.ok) throw new Error(`Status ${res.status}`);
+    const data = await res.json();
+    prepaidOrderNumber = data.order.orderNumber;
+
+    if (data.order.paymentStatus !== 'Pending') {
+      throw new Error(`CRITICAL: Order was marked '${data.order.paymentStatus}' before payment verification!`);
+    }
+
+    if (data.order.awbNumber && data.order.awbNumber.trim()) {
+      throw new Error(`CRITICAL: Fake AWB '${data.order.awbNumber}' was generated without courier booking!`);
+    }
+  });
+
+  // 12. Razorpay Order Creation: Validates order existence and gateway config
+  await assertTest('POST /api/payments/create-razorpay-order validates order reference', async () => {
+    const res = await fetch(`${BASE_URL}/api/payments/create-razorpay-order`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderNumber: 'NON_EXISTENT_ORDER' })
+    });
+
+    // Expect 400 (if gateway not configured) or 404 (order not found)
+    if (res.status !== 400 && res.status !== 404) {
+      throw new Error(`Expected 400 or 404, received ${res.status}`);
+    }
+  });
+
+  // 13. Razorpay Signature Verification: Rejects tampered/invalid signature
+  await assertTest('POST /api/payments/verify-razorpay rejects forged payment signatures', async () => {
+    const res = await fetch(`${BASE_URL}/api/payments/verify-razorpay`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orderNumber: prepaidOrderNumber,
+        razorpay_order_id: 'order_test_123',
+        razorpay_payment_id: 'pay_test_456',
+        razorpay_signature: 'fake_tampered_signature_hex_1234567890abcdef'
+      })
+    });
+
+    if (res.status !== 400) {
+      throw new Error(`Expected 400 Bad Request, received ${res.status}`);
+    }
+  });
+
+  // 14. Payment Failure Recording: Safely updates order paymentStatus to Failed
+  await assertTest('POST /api/payments/record-failure records customer cancellation safely', async () => {
+    const res = await fetch(`${BASE_URL}/api/payments/record-failure`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orderNumber: prepaidOrderNumber,
+        reason: 'Payment cancelled in modal test'
+      })
+    });
+
+    if (!res.ok) throw new Error(`Status ${res.status}`);
+    const data = await res.json();
+    if (!data.success) throw new Error('Expected success: true');
+  });
+
+  // 15. Courier Serviceability Public Endpoint
+  await assertTest('GET /api/shipments/serviceability responds with delivery information', async () => {
+    const res = await fetch(`${BASE_URL}/api/shipments/serviceability?deliveryPincode=600001`);
+    if (!res.ok) throw new Error(`Status ${res.status}`);
+    const data = await res.json();
+    if (!data.success) throw new Error('Serviceability check failed');
+  });
+
   console.log(`\n======================================================`);
   console.log(`🏁 Test Results: ${passed} Passed, ${failed} Failed`);
   console.log(`======================================================\n`);

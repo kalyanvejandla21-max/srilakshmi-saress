@@ -112,6 +112,10 @@ export interface Order {
   awbNumber?: string;
   trackingUrl?: string;
   shipmentId?: string;
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
+  razorpaySignature?: string;
+  paymentFailureReason?: string;
   idempotencyKey?: string;
   createdAt: string;
   updatedAt: string;

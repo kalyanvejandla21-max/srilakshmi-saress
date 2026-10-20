@@ -588,3 +588,152 @@ export const adminResetDemoCatalogApi = async (): Promise<boolean> => {
 
   return true;
 };
+
+// --- RAZORPAY PAYMENT INTEGRATION SERVICES ---
+
+export interface CreateRazorpayOrderResponse {
+  success: boolean;
+  razorpayOrderId: string;
+  amount: number;
+  currency: string;
+  keyId: string;
+}
+
+export const createRazorpayOrderApi = async (orderNumber: string): Promise<CreateRazorpayOrderResponse> => {
+  const response = await fetch(`${API_BASE_URL}/api/payments/create-razorpay-order`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderNumber })
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const err: any = new Error(data.message || data.error || 'Failed to initialize Razorpay payment');
+    err.code = data.code;
+    throw err;
+  }
+
+  return data;
+};
+
+export interface VerifyPaymentPayload {
+  orderNumber: string;
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}
+
+export const verifyRazorpayPaymentApi = async (payload: VerifyPaymentPayload): Promise<Order> => {
+  const response = await fetch(`${API_BASE_URL}/api/payments/verify-razorpay`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.success) {
+    throw new Error(data.message || 'Payment signature verification failed');
+  }
+
+  if (data.order) {
+    saveOrder(data.order);
+    return data.order;
+  }
+
+  throw new Error('Verified order object was not returned by server');
+};
+
+export const recordPaymentFailureApi = async (
+  orderNumber: string,
+  reason: string,
+  razorpayOrderId?: string
+): Promise<void> => {
+  try {
+    await fetch(`${API_BASE_URL}/api/payments/record-failure`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderNumber, reason, razorpay_order_id: razorpayOrderId })
+    });
+  } catch (err) {
+    console.warn('Could not record payment failure with server:', err);
+  }
+};
+
+// --- SHIPROCKET COURIER SERVICES ---
+
+export interface CourierServiceabilityResult {
+  success: boolean;
+  isConfigured: boolean;
+  message?: string;
+  isServiceable?: boolean;
+  couriersCount?: number;
+  couriers?: Array<{
+    courierCompanyId: number;
+    courierName: string;
+    rate: number;
+    estimatedDeliveryDays: string;
+    etd?: string;
+  }>;
+}
+
+export const checkServiceabilityApi = async (
+  deliveryPincode: string,
+  pickupPincode: string = '631501'
+): Promise<CourierServiceabilityResult> => {
+  try {
+    const url = new URL(`${API_BASE_URL || window.location.origin}/api/shipments/serviceability`);
+    url.searchParams.set('deliveryPincode', deliveryPincode);
+    url.searchParams.set('pickupPincode', pickupPincode);
+
+    const response = await fetch(url.toString());
+    if (response.ok) {
+      return await response.json();
+    }
+  } catch (err) {
+    console.warn('Courier serviceability check failed:', err);
+  }
+
+  return {
+    success: true,
+    isConfigured: false,
+    message: 'Standard express courier delivery available across India (3 - 5 business days).'
+  };
+};
+
+export const adminGetPickupLocationsApi = async (): Promise<any[]> => {
+  const token = getAdminToken();
+  if (!token) throw new Error('Admin authentication required');
+
+  const response = await fetch(`${API_BASE_URL}/api/admin/shiprocket/pickup-locations`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || data.error || 'Failed to fetch pickup locations');
+
+  return data.locations || [];
+};
+
+export const adminDispatchShiprocketApi = async (
+  idOrNumber: string,
+  pickupLocation?: string
+): Promise<{ order: Order; shiprocket: any; awb: any }> => {
+  const token = getAdminToken();
+  if (!token) throw new Error('Admin authentication required');
+
+  const response = await fetch(`${API_BASE_URL}/api/admin/orders/${encodeURIComponent(idOrNumber)}/dispatch-shiprocket`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({ pickupLocation })
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.message || data.error || 'Shiprocket dispatch failed');
+  }
+
+  return data;
+};

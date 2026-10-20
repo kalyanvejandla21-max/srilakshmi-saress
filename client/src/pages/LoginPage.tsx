@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Lock, Mail, ShieldCheck, ArrowRight, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { getAdminToken } from '../services/api';
 
 export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -18,7 +19,7 @@ export const LoginPage: React.FC = () => {
     try {
       const isSuccess = await login(email, password);
       if (isSuccess) {
-        if (email.toLowerCase().trim() === 'admin@srilakshmisarees.com') {
+        if (getAdminToken()) {
           navigate('/admin');
         } else {
           navigate('/account');

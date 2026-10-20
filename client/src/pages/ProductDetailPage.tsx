@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Heart, ShoppingBag, Truck, ShieldCheck, RefreshCw, Star, CheckCircle, MapPin, Share2 } from 'lucide-react';
 import { ProductCard } from '../components/product/ProductCard';
 import { Product } from '../types';
-import { getStoredProducts, fetchProductsFromServer } from '../services/api';
+import { getStoredProducts, fetchProductsFromServer, checkServiceabilityApi } from '../services/api';
 import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
 import { useToast } from '../context/ToastContext';
@@ -60,12 +60,24 @@ export const ProductDetailPage: React.FC = () => {
     .filter((p) => p.category === product.category && p.id !== product.id)
     .slice(0, 4);
 
-  const handlePincodeCheck = (e: React.FormEvent) => {
+  const handlePincodeCheck = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (/^\d{6}$/.test(pincode)) {
-      setPincodeResult(`Delivery available to ${pincode}! Estimated delivery within 3 - 5 business days via Express Courier.`);
-    } else {
+    if (!/^\d{6}$/.test(pincode)) {
       setPincodeResult('Please enter a valid 6-digit Indian PIN Code.');
+      return;
+    }
+
+    setPincodeResult('Checking courier serviceability...');
+    try {
+      const res = await checkServiceabilityApi(pincode);
+      if (res.isConfigured && res.couriers && res.couriers.length > 0) {
+        const fastest = res.couriers[0];
+        setPincodeResult(`Express courier delivery available to ${pincode} via ${fastest.courierName}! Estimated delivery in ${fastest.estimatedDeliveryDays || '2-4'} days.`);
+      } else {
+        setPincodeResult(`Delivery available to PIN ${pincode}! Estimated delivery within 3 - 5 business days via Express Courier.`);
+      }
+    } catch {
+      setPincodeResult(`Delivery available to PIN ${pincode}! Estimated delivery within 3 - 5 business days.`);
     }
   };
 

@@ -15,7 +15,10 @@ import {
   RotateCcw,
   Search,
   Filter,
-  X
+  X,
+  ExternalLink,
+  FileText,
+  ChevronRight
 } from 'lucide-react';
 import { Product, Order, OrderStatus, SareeCategory } from '../../types';
 import {
@@ -26,6 +29,7 @@ import {
   adminUpdateProductApi,
   adminArchiveProductApi,
   adminResetDemoCatalogApi,
+  adminDispatchShiprocketApi,
   getStoredCoupons
 } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
@@ -44,6 +48,14 @@ export const AdminDashboard: React.FC = () => {
   // Search & Filter state for orders
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>('All');
+
+  // Order Details & Dispatch Modal state
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [isDispatching, setIsDispatching] = useState(false);
+  const [manualCourier, setManualCourier] = useState('');
+  const [manualAwb, setManualAwb] = useState('');
+  const [manualTrackingUrl, setManualTrackingUrl] = useState('');
+  const [manualPaymentStatus, setManualPaymentStatus] = useState<string>('Pending');
 
   // Add Product Modal state
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
@@ -110,9 +122,56 @@ export const AdminDashboard: React.FC = () => {
     try {
       const updated = await adminUpdateOrderStatusApi(orderId, { orderStatus: newStatus });
       setOrders((prev) => prev.map((o) => (o.id === orderId || o.orderNumber === orderId ? updated : o)));
+      if (selectedOrder && (selectedOrder.id === orderId || selectedOrder.orderNumber === orderId)) {
+        setSelectedOrder(updated);
+      }
       showToast(`Order status updated to "${newStatus}"`, 'success');
     } catch (err: any) {
       showToast(err.message || 'Failed to update order status on server', 'error');
+    }
+  };
+
+  const handleOpenOrderModal = (ord: Order) => {
+    setSelectedOrder(ord);
+    setManualCourier(ord.courierName || '');
+    setManualAwb(ord.awbNumber || '');
+    setManualTrackingUrl(ord.trackingUrl || '');
+    setManualPaymentStatus(ord.paymentStatus || 'Pending');
+  };
+
+  const handleShiprocketDispatch = async (orderId: string) => {
+    setIsDispatching(true);
+    try {
+      const res = await adminDispatchShiprocketApi(orderId);
+      setOrders((prev) => prev.map((o) => (o.id === orderId || o.orderNumber === orderId ? res.order : o)));
+      setSelectedOrder(res.order);
+      setManualCourier(res.order.courierName || '');
+      setManualAwb(res.order.awbNumber || '');
+      setManualTrackingUrl(res.order.trackingUrl || '');
+      showToast(`Shipment registered with Shiprocket! AWB: ${res.order.awbNumber || 'Pending Courier Pickup'}`, 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Shiprocket dispatch failed. Please check credentials on Render or use manual dispatch.', 'error');
+    } finally {
+      setIsDispatching(false);
+    }
+  };
+
+  const handleSaveManualDispatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOrder) return;
+    try {
+      const updated = await adminUpdateOrderStatusApi(selectedOrder.id || selectedOrder.orderNumber, {
+        courierName: manualCourier,
+        awbNumber: manualAwb,
+        trackingUrl: manualTrackingUrl,
+        paymentStatus: manualPaymentStatus as any,
+        orderStatus: manualAwb && selectedOrder.orderStatus === 'Order Placed' ? 'In Transit' : selectedOrder.orderStatus,
+      });
+      setOrders((prev) => prev.map((o) => (o.id === selectedOrder.id || o.orderNumber === selectedOrder.orderNumber ? updated : o)));
+      setSelectedOrder(updated);
+      showToast('Fulfillment & courier tracking updated successfully!', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update courier dispatch details', 'error');
     }
   };
 
@@ -381,13 +440,14 @@ export const AdminDashboard: React.FC = () => {
                         <th style={{ padding: '0.75rem 1rem' }}>Payment</th>
                         <th style={{ padding: '0.75rem 1rem' }}>Total</th>
                         <th style={{ padding: '0.75rem 1rem' }}>Fulfillment Status</th>
-                        <th style={{ padding: '0.75rem 1rem' }}>Date</th>
+                        <th style={{ padding: '0.75rem 1rem' }}>Courier / AWB</th>
+                        <th style={{ padding: '0.75rem 1rem' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredOrders.length === 0 ? (
                         <tr>
-                          <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>
+                          <td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>
                             No orders found matching the filter criteria.
                           </td>
                         </tr>
@@ -436,8 +496,29 @@ export const AdminDashboard: React.FC = () => {
                                 <option value="Cancelled">Cancelled</option>
                               </select>
                             </td>
-                            <td style={{ padding: '0.75rem 1rem', color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>
-                              {new Date(ord.createdAt).toLocaleDateString('en-IN')}
+                            <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem' }}>
+                              {ord.awbNumber ? (
+                                <a
+                                  href={ord.trackingUrl || `https://shiprocket.co/tracking/${ord.awbNumber}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{ color: 'var(--color-maroon)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
+                                >
+                                  {ord.awbNumber} <ExternalLink size={12} />
+                                </a>
+                              ) : (
+                                <span style={{ color: 'var(--color-text-muted)' }}>Pending AWB</span>
+                              )}
+                            </td>
+                            <td style={{ padding: '0.75rem 1rem' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenOrderModal(ord)}
+                                className="btn-secondary"
+                                style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
+                              >
+                                <Truck size={14} /> Dispatch
+                              </button>
                             </td>
                           </tr>
                         ))
@@ -733,6 +814,170 @@ export const AdminDashboard: React.FC = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Order Details & Courier Dispatch Modal */}
+        {selectedOrder && (
+          <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '1rem', backdropFilter: 'blur(3px)' }}>
+            <div style={{ backgroundColor: '#FFFFFF', borderRadius: 'var(--radius-md)', width: '100%', maxWidth: '750px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem', boxShadow: 'var(--shadow-xl)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
+                <div>
+                  <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.375rem', color: 'var(--color-maroon)', margin: 0 }}>
+                    Order #{selectedOrder.orderNumber}
+                  </h3>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
+                    Placed on {new Date(selectedOrder.createdAt).toLocaleString('en-IN')}
+                  </div>
+                </div>
+                <button onClick={() => setSelectedOrder(null)} className="icon-button">
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Order Items Table */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h4 style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-maroon)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+                  Ordered Items ({selectedOrder.items?.length || 0})
+                </h4>
+                <div style={{ backgroundColor: 'var(--bg-primary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', padding: '0.75rem' }}>
+                  {selectedOrder.items?.map((it, idx) => (
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: idx < (selectedOrder.items?.length || 0) - 1 ? '1px solid var(--color-border)' : 'none' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <img src={it.image || '/images/cat-silk.jpg'} alt="" style={{ width: '40px', height: '50px', objectFit: 'cover', borderRadius: '4px' }} />
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{it.productName}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Qty: {it.quantity} × ₹{it.price.toLocaleString('en-IN')}</div>
+                        </div>
+                      </div>
+                      <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>
+                        ₹{it.lineTotal.toLocaleString('en-IN')}
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px dashed var(--color-border-dark)', fontWeight: 700 }}>
+                    <span>Final Total</span>
+                    <span>₹{(selectedOrder.finalTotal || 0).toLocaleString('en-IN')}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Customer & Delivery Information */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem', fontSize: '0.8125rem' }}>
+                <div style={{ backgroundColor: '#F9FAFB', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
+                  <div style={{ fontWeight: 700, color: 'var(--color-maroon)', marginBottom: '0.5rem' }}>Customer & Shipping Address</div>
+                  <div style={{ fontWeight: 600 }}>{selectedOrder.shippingAddress?.fullName}</div>
+                  <div>Phone: {selectedOrder.shippingAddress?.phone}</div>
+                  <div>Email: {selectedOrder.guestEmail || 'None provided'}</div>
+                  <div style={{ marginTop: '0.25rem' }}>
+                    {selectedOrder.shippingAddress?.houseNo}, {selectedOrder.shippingAddress?.street}
+                  </div>
+                  <div>
+                    {selectedOrder.shippingAddress?.city}, {selectedOrder.shippingAddress?.state} - {selectedOrder.shippingAddress?.pincode}
+                  </div>
+                </div>
+
+                <div style={{ backgroundColor: '#F9FAFB', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
+                  <div style={{ fontWeight: 700, color: 'var(--color-maroon)', marginBottom: '0.5rem' }}>Payment Gateway Details</div>
+                  <div>Method: <strong>{selectedOrder.paymentMethod}</strong></div>
+                  <div>Status: <span style={{ fontWeight: 700, color: selectedOrder.paymentStatus === 'Paid' ? 'var(--color-success)' : 'var(--color-gold-dark)' }}>{selectedOrder.paymentStatus}</span></div>
+                  {selectedOrder.razorpayPaymentId && (
+                    <div style={{ wordBreak: 'break-all', marginTop: '0.25rem' }}>
+                      Razorpay Payment ID: <code>{selectedOrder.razorpayPaymentId}</code>
+                    </div>
+                  )}
+                  {selectedOrder.razorpayOrderId && (
+                    <div style={{ wordBreak: 'break-all' }}>
+                      Razorpay Order ID: <code>{selectedOrder.razorpayOrderId}</code>
+                    </div>
+                  )}
+                  {selectedOrder.paymentFailureReason && (
+                    <div style={{ color: 'var(--color-danger)', marginTop: '0.25rem' }}>
+                      Failure Reason: {selectedOrder.paymentFailureReason}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Courier Fulfillment Section */}
+              <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h4 style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--color-maroon)', margin: 0 }}>
+                    Shipping & Courier Dispatch
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => handleShiprocketDispatch(selectedOrder.id || selectedOrder.orderNumber)}
+                    disabled={isDispatching}
+                    className="btn-primary"
+                    style={{ fontSize: '0.8125rem', padding: '0.5rem 1rem' }}
+                  >
+                    {isDispatching ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
+                    {isDispatching ? 'Contacting Shiprocket...' : 'Ship with Shiprocket API'}
+                  </button>
+                </div>
+
+                {/* Manual Tracking & Status Form */}
+                <form onSubmit={handleSaveManualDispatch} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', backgroundColor: 'var(--bg-primary)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.75rem' }}>Courier Partner Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. DTDC / Delhivery / Shiprocket"
+                      value={manualCourier}
+                      onChange={(e) => setManualCourier(e.target.value)}
+                      className="form-input"
+                      style={{ fontSize: '0.8125rem' }}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.75rem' }}>AWB / Tracking Number</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 1428573921"
+                      value={manualAwb}
+                      onChange={(e) => setManualAwb(e.target.value)}
+                      className="form-input"
+                      style={{ fontSize: '0.8125rem' }}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: 0, gridColumn: 'span 2' }}>
+                    <label className="form-label" style={{ fontSize: '0.75rem' }}>Public Tracking URL</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. https://shiprocket.co/tracking/..."
+                      value={manualTrackingUrl}
+                      onChange={(e) => setManualTrackingUrl(e.target.value)}
+                      className="form-input"
+                      style={{ fontSize: '0.8125rem' }}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.75rem' }}>Payment Status</label>
+                    <select
+                      value={manualPaymentStatus}
+                      onChange={(e) => setManualPaymentStatus(e.target.value)}
+                      className="form-input"
+                      style={{ fontSize: '0.8125rem' }}
+                    >
+                      <option value="Pending">Pending</option>
+                      <option value="Paid">Paid</option>
+                      <option value="Failed">Failed</option>
+                      <option value="Refunded">Refunded</option>
+                    </select>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end' }}>
+                    <button type="submit" className="btn-secondary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.8125rem' }}>
+                      Save Dispatch Details
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
           </div>
         )}

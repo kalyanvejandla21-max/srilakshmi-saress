@@ -39,22 +39,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const login = async (email: string, password?: string): Promise<boolean> => {
     const cleanEmail = email.toLowerCase().trim();
 
-    // Admin Authentication via Backend API and JWT
-    if (cleanEmail === 'admin@srilakshmisarees.com') {
+    // Attempt Admin Authentication via Backend API and JWT if password is provided
+    if (password && password.trim()) {
       try {
-        const { email: adminEmail } = await adminLoginApi(cleanEmail, password || '');
+        const adminRes = await adminLoginApi(cleanEmail, password.trim());
         const adminUser: User = {
           id: 'user-admin-1',
           name: 'Store Administrator',
-          email: adminEmail,
+          email: adminRes.email || cleanEmail,
           role: 'admin'
         };
         setUser(adminUser);
         showToast('Authenticated successfully. Access granted to Admin Dashboard.', 'success');
         return true;
-      } catch (err: any) {
-        showToast(err.message || 'Administrator authentication failed.', 'error');
-        return false;
+      } catch (adminErr: any) {
+        // If email was explicitly marked as admin, don't fall back to customer login
+        if (cleanEmail.includes('admin') || cleanEmail.endsWith('@srilakshmisarees.com')) {
+          showToast(adminErr.message || 'Administrator authentication failed.', 'error');
+          return false;
+        }
       }
     }
 

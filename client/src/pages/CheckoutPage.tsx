@@ -5,7 +5,27 @@ import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Order, ShippingAddress } from '../types';
-import { createOrderOnServer } from '../services/api';
+import {
+  createOrderOnServer,
+  createRazorpayOrderApi,
+  verifyRazorpayPaymentApi,
+  recordPaymentFailureApi,
+} from '../services/api';
+
+const loadRazorpayScript = (): Promise<boolean> => {
+  return new Promise((resolve) => {
+    if ((window as any).Razorpay) {
+      resolve(true);
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+};
 
 export const CheckoutPage: React.FC = () => {
   const { cart, subtotal, appliedCoupon, discountAmount, finalTotal, clearCart } = useCart();
@@ -29,6 +49,7 @@ export const CheckoutPage: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState<'Prepaid' | 'COD'>('Prepaid');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isGatewayUnconfigured, setIsGatewayUnconfigured] = useState(false);
   const [idempotencyKey] = useState<string>(() => `idemp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`);
 
   if (cart.length === 0) {
@@ -57,6 +78,7 @@ export const CheckoutPage: React.FC = () => {
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError(null);
+    setIsGatewayUnconfigured(false);
 
     // Validation
     if (!address.fullName || !address.phone || !address.pincode || !address.houseNo || !address.street || !address.city || !address.state) {
@@ -100,14 +122,95 @@ export const CheckoutPage: React.FC = () => {
     };
 
     try {
-      const confirmedOrder = await createOrderOnServer(orderPayload);
-      clearCart();
-      setIsSubmitting(false);
-      showToast(`Order #${confirmedOrder.orderNumber} confirmed successfully!`, 'success');
-      navigate(`/order-confirmation/${confirmedOrder.orderNumber}`, { state: { order: confirmedOrder } });
+      // 1. Create order securely on server (status will be Pending)
+      const createdOrder = await createOrderOnServer(orderPayload);
+
+      // 2. Handle Cash on Delivery Flow
+      if (paymentMethod === 'COD') {
+        clearCart();
+        setIsSubmitting(false);
+        showToast(`Order #${createdOrder.orderNumber} confirmed successfully!`, 'success');
+        navigate(`/order-confirmation/${createdOrder.orderNumber}`, { state: { order: createdOrder } });
+        return;
+      }
+
+      // 3. Handle Prepaid Flow via Razorpay
+      const isScriptLoaded = await loadRazorpayScript();
+      if (!isScriptLoaded) {
+        throw new Error('Unable to load secure Razorpay payment modal. Please check your internet connection or choose Cash on Delivery.');
+      }
+
+      let rzpOrderData;
+      try {
+        rzpOrderData = await createRazorpayOrderApi(createdOrder.orderNumber);
+      } catch (orderErr: any) {
+        if (orderErr.code === 'GATEWAY_NOT_CONFIGURED') {
+          setIsGatewayUnconfigured(true);
+          setPaymentMethod('COD');
+          throw new Error('Online Payment Gateway is currently pending merchant activation. Please switch to Cash on Delivery (COD) to place your order now.');
+        }
+        throw orderErr;
+      }
+
+      // Launch official Razorpay Checkout modal
+      const options = {
+        key: rzpOrderData.keyId,
+        amount: rzpOrderData.amount,
+        currency: rzpOrderData.currency,
+        name: 'Sri Lakshmi Sarees',
+        description: `Order #${createdOrder.orderNumber} - Handwoven Pure Silk Sarees`,
+        image: '/saree-logo.svg',
+        order_id: rzpOrderData.razorpayOrderId,
+        prefill: {
+          name: address.fullName,
+          email: email || '',
+          contact: cleanPhone,
+        },
+        theme: {
+          color: '#5C061C',
+        },
+        handler: async (response: any) => {
+          try {
+            setIsSubmitting(true);
+            const verifiedOrder = await verifyRazorpayPaymentApi({
+              orderNumber: createdOrder.orderNumber,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            });
+            clearCart();
+            setIsSubmitting(false);
+            showToast(`Payment verified! Order #${verifiedOrder.orderNumber} placed successfully!`, 'success');
+            navigate(`/order-confirmation/${verifiedOrder.orderNumber}`, { state: { order: verifiedOrder } });
+          } catch (verifyErr: any) {
+            setIsSubmitting(false);
+            const errText = `Payment verification failed: ${verifyErr.message}. If funds were debited, our team will verify your transaction manually.`;
+            setSubmitError(errText);
+            showToast(errText, 'error');
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            setIsSubmitting(false);
+            recordPaymentFailureApi(createdOrder.orderNumber, 'Payment modal dismissed by user', rzpOrderData.razorpayOrderId);
+            showToast(`Payment was cancelled. Order #${createdOrder.orderNumber} is preserved as Pending. You may retry or pay via COD.`, 'info');
+          },
+        },
+      };
+
+      const razorpayInstance = new (window as any).Razorpay(options);
+      razorpayInstance.on('payment.failed', (resp: any) => {
+        setIsSubmitting(false);
+        const reason = resp.error?.description || 'Transaction declined by bank';
+        recordPaymentFailureApi(createdOrder.orderNumber, reason, rzpOrderData.razorpayOrderId);
+        setSubmitError(`Payment failed: ${reason}. Please retry or choose Cash on Delivery.`);
+        showToast(`Payment failed: ${reason}`, 'error');
+      });
+
+      razorpayInstance.open();
     } catch (err: any) {
       setIsSubmitting(false);
-      const errorMsg = err.message || 'We could not securely confirm your order with the database. Please try again.';
+      const errorMsg = err.message || 'We could not securely process your order. Please try again.';
       setSubmitError(errorMsg);
       showToast(errorMsg, 'error');
     }
@@ -122,27 +225,42 @@ export const CheckoutPage: React.FC = () => {
 
         {submitError && (
           <div style={{
-            backgroundColor: '#FEF2F2',
-            border: '1px solid #FCA5A5',
+            backgroundColor: isGatewayUnconfigured ? '#FFFBEB' : '#FEF2F2',
+            border: `1px solid ${isGatewayUnconfigured ? '#FCD34D' : '#FCA5A5'}`,
             borderRadius: 'var(--radius-md)',
             padding: '1.25rem 1.5rem',
             marginBottom: '2rem',
             display: 'flex',
             alignItems: 'flex-start',
             gap: '1rem',
-            color: '#991B1B'
+            color: isGatewayUnconfigured ? '#92400E' : '#991B1B'
           }}>
             <AlertCircle size={24} style={{ flexShrink: 0, marginTop: '2px' }} />
             <div>
               <div style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.25rem' }}>
-                Order Could Not Be Confirmed
+                {isGatewayUnconfigured ? 'Online Gateway Notice' : 'Order Could Not Be Completed'}
               </div>
               <div style={{ fontSize: '0.875rem', lineHeight: 1.6, marginBottom: '0.75rem' }}>
                 {submitError}
               </div>
-              <div style={{ fontSize: '0.8125rem', color: '#7F1D1D' }}>
-                Your cart and entered address details have been preserved. Please check your connection and click "Place Order" again to retry.
-              </div>
+              {isGatewayUnconfigured ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaymentMethod('COD');
+                    setSubmitError(null);
+                    setIsGatewayUnconfigured(false);
+                  }}
+                  className="btn-primary"
+                  style={{ fontSize: '0.8125rem', padding: '0.5rem 1rem' }}
+                >
+                  Confirm with Cash on Delivery (COD)
+                </button>
+              ) : (
+                <div style={{ fontSize: '0.8125rem', color: '#7F1D1D' }}>
+                  Your cart and entered address details have been preserved. Please check your connection and click "Place Order" again to retry.
+                </div>
+              )}
             </div>
           </div>
         )}
