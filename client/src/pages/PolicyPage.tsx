@@ -50,7 +50,7 @@ export const PolicyPage: React.FC = () => {
               4. Damaged or Tampered Shipments
             </h3>
             <p>
-              If the outer courier parcel appears noticeably damaged, opened, or tampered with at the time of delivery, please do not accept the package or take an unboxing video as proof. Report the issue within <strong>48 hours</strong> of delivery through our <Link to="/contact" style={{ color: 'var(--color-maroon)', fontWeight: 600 }}>Contact Us page</Link> so our team can resolve it immediately.
+              If the outer courier parcel appears noticeably damaged, opened, or tampered with at the time of delivery, please report it to the courier delivery executive immediately and contact our customer support team. If you accept the parcel, please record a clear unboxing video and take photographs of the packaging and any damaged contents. Any such issue must be reported within <strong>48 hours</strong> of delivery through our <Link to="/contact" style={{ color: 'var(--color-maroon)', fontWeight: 600 }}>Contact Us page</Link> or by emailing <a href={`mailto:${BUSINESS_CONFIG.contact.email}`} style={{ color: 'var(--color-maroon)', fontWeight: 600 }}>{BUSINESS_CONFIG.contact.email}</a> with your Order Number and evidence, subject to review under our return and exchange policy.
             </p>
           </div>
         </div>
@@ -90,7 +90,8 @@ export const PolicyPage: React.FC = () => {
               To initiate a return, contact our support team within {BUSINESS_CONFIG.policies.returnWindowDays} days of receiving your parcel:
             </p>
             <div style={{ backgroundColor: 'var(--bg-primary)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', margin: '0.5rem 0' }}>
-              <div><strong>Support Desk:</strong> Submit a request via our <Link to="/contact" style={{ color: 'var(--color-maroon)', fontWeight: 600 }}>Contact Us</Link> page.</div>
+              <div><strong>Email Support:</strong> <a href={`mailto:${BUSINESS_CONFIG.contact.email}`} style={{ color: 'var(--color-maroon)', fontWeight: 600 }}>{BUSINESS_CONFIG.contact.email}</a></div>
+              <div><strong>Phone / WhatsApp:</strong> <a href={`tel:${BUSINESS_CONFIG.contact.phone?.replace(/[^0-9+]/g, '')}`} style={{ color: 'var(--color-maroon)', fontWeight: 600 }}>{BUSINESS_CONFIG.contact.phoneDisplay}</a></div>
               <div style={{ marginTop: '0.375rem', fontSize: '0.875rem', color: 'var(--color-text-light)' }}>
                 Please mention your <strong>Order Number</strong> and attach a clear photograph or unboxing video highlighting the issue.
               </div>
@@ -128,7 +129,7 @@ export const PolicyPage: React.FC = () => {
               1. Customer Cancellation Before Dispatch
             </h3>
             <p>
-              You may cancel an order free of charge at any time before it has been dispatched from our studio. To cancel, please submit a request through our <Link to="/contact" style={{ color: 'var(--color-maroon)', fontWeight: 600 }}>Contact Us</Link> page with your Order Number prior to shipment.
+              You may cancel an order free of charge at any time before it has been dispatched from our studio. To cancel, please email <a href={`mailto:${BUSINESS_CONFIG.contact.email}`} style={{ color: 'var(--color-maroon)', fontWeight: 600 }}>{BUSINESS_CONFIG.contact.email}</a> or reach out through our <Link to="/contact" style={{ color: 'var(--color-maroon)', fontWeight: 600 }}>Contact Us</Link> page with your Order Number prior to shipment.
             </p>
           </div>
 
@@ -201,9 +202,10 @@ export const PolicyPage: React.FC = () => {
               For privacy queries, order discrepancies, or customer grievances, consumers may reach our customer management desk:
             </p>
             <div style={{ backgroundColor: 'var(--bg-primary)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', margin: '0.5rem 0' }}>
-              <div><strong>Desk:</strong> Family Management Team</div>
-              <div><strong>Contact Channel:</strong> Detailed on our <Link to="/contact" style={{ color: 'var(--color-maroon)', fontWeight: 600 }}>Contact Us</Link> page.</div>
-              <div><strong>Operating Location:</strong> {BUSINESS_CONFIG.contact.fullAddress}</div>
+              <div><strong>Support Desk:</strong> Family Management Team</div>
+              <div><strong>Email:</strong> <a href={`mailto:${BUSINESS_CONFIG.contact.email}`} style={{ color: 'var(--color-maroon)', fontWeight: 600 }}>{BUSINESS_CONFIG.contact.email}</a></div>
+              <div><strong>Phone:</strong> <a href={`tel:${BUSINESS_CONFIG.contact.phone?.replace(/[^0-9+]/g, '')}`} style={{ color: 'var(--color-maroon)', fontWeight: 600 }}>{BUSINESS_CONFIG.contact.phoneDisplay}</a></div>
+              <div><strong>Dispatch Facility:</strong> {BUSINESS_CONFIG.contact.fullAddress}</div>
               <div style={{ marginTop: '0.375rem', fontSize: '0.875rem', color: 'var(--color-text-light)' }}>
                 {BUSINESS_CONFIG.grievanceOfficer.notice}
               </div>

@@ -85,11 +85,23 @@ export const Footer: React.FC = () => {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
                 <Phone size={16} color="var(--color-gold)" style={{ flexShrink: 0 }} />
-                <span>{BUSINESS_CONFIG.contact.phoneDisplay}</span>
+                {BUSINESS_CONFIG.contact.phone ? (
+                  <a href={`tel:${BUSINESS_CONFIG.contact.phone.replace(/[^0-9+]/g, '')}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                    {BUSINESS_CONFIG.contact.phoneDisplay}
+                  </a>
+                ) : (
+                  <span>{BUSINESS_CONFIG.contact.phoneDisplay}</span>
+                )}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
                 <Mail size={16} color="var(--color-gold)" style={{ flexShrink: 0 }} />
-                <span>{BUSINESS_CONFIG.contact.isEmailConfirmed && BUSINESS_CONFIG.contact.email ? BUSINESS_CONFIG.contact.email : BUSINESS_CONFIG.contact.emailDisplay}</span>
+                {BUSINESS_CONFIG.contact.email ? (
+                  <a href={`mailto:${BUSINESS_CONFIG.contact.email}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                    {BUSINESS_CONFIG.contact.email}
+                  </a>
+                ) : (
+                  <span>{BUSINESS_CONFIG.contact.emailDisplay}</span>
+                )}
               </div>
             </div>
           </div>

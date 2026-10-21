@@ -37,38 +37,36 @@ export const ContactPage: React.FC = () => {
               Direct telephone inquiries & WhatsApp assistance:
             </p>
 
-            {contact.isPhoneConfirmed && contact.phone ? (
-              <div>
-                <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--color-text)', marginBottom: '0.5rem' }}>
+            <div>
+              <div style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--color-maroon)', marginBottom: '0.5rem' }}>
+                <a href={`tel:${contact.phone.replace(/[^0-9+]/g, '')}`} style={{ color: 'inherit', textDecoration: 'none' }}>
                   {contact.phoneDisplay}
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '1rem' }}>
-                  <a
-                    href={`tel:${contact.phone}`}
-                    className="btn-secondary"
-                    style={{ padding: '0.4rem 0.875rem', fontSize: '0.8125rem' }}
-                  >
-                    Call Support
-                  </a>
-                  {contact.whatsapp && (
-                    <a
-                      href={`https://wa.me/${contact.whatsapp.replace(/[^0-9]/g, '')}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="btn-gold"
-                      style={{ padding: '0.4rem 0.875rem', fontSize: '0.8125rem', display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}
-                    >
-                      <MessageSquare size={14} /> WhatsApp Us
-                    </a>
-                  )}
-                </div>
+                </a>
               </div>
-            ) : (
-              <div style={{ marginTop: 'auto', backgroundColor: 'var(--bg-primary)', padding: '0.875rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', fontSize: '0.8125rem', color: 'var(--color-text-light)', display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
-                <Info size={16} color="var(--color-gold-dark)" style={{ flexShrink: 0, marginTop: '2px' }} />
-                <span>Working support phone line and WhatsApp channel will be activated upon final telecom carrier verification.</span>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '1rem' }}>
+                <a
+                  href={`tel:${contact.phone.replace(/[^0-9+]/g, '')}`}
+                  className="btn-secondary"
+                  style={{ padding: '0.4rem 0.875rem', fontSize: '0.8125rem' }}
+                >
+                  Call Support
+                </a>
+                <a
+                  href={`https://wa.me/${contact.whatsapp.replace(/[^0-9]/g, '')}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-gold"
+                  style={{ padding: '0.4rem 0.875rem', fontSize: '0.8125rem', display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}
+                >
+                  <MessageSquare size={14} /> WhatsApp Us
+                </a>
               </div>
-            )}
+            </div>
+
+            <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--color-border)', fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'flex-start', gap: '0.375rem' }}>
+              <Info size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
+              <span>{contact.phoneStatusNotice}</span>
+            </div>
           </div>
 
           {/* Email Support */}
@@ -82,42 +80,48 @@ export const ContactPage: React.FC = () => {
             <p style={{ fontSize: '0.875rem', color: 'var(--color-text-light)', marginBottom: '1rem' }}>
               Write to our team for order inquiries or exchange requests:
             </p>
-            <div style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--color-text)', marginBottom: '0.75rem', wordBreak: 'break-all' }}>
-              {contact.isEmailConfirmed && contact.email ? contact.email : contact.emailDisplay}
+            <div style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--color-maroon)', marginBottom: '0.75rem', wordBreak: 'break-all' }}>
+              <a href={`mailto:${contact.email}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                {contact.email}
+              </a>
             </div>
 
-            {contact.isEmailConfirmed && contact.email ? (
-              <a
-                href={`mailto:${contact.email}`}
-                className="btn-secondary"
-                style={{ padding: '0.4rem 0.875rem', fontSize: '0.8125rem', display: 'inline-block', alignSelf: 'flex-start', marginTop: 'auto' }}
-              >
-                Compose Email
-              </a>
-            ) : (
-              <div style={{ marginTop: 'auto', backgroundColor: 'var(--bg-primary)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', fontSize: '0.8125rem', color: 'var(--color-text-light)' }}>
-                <span>Official support mailbox is currently being set up. Inquiries can be received once mailbox activation is complete.</span>
-              </div>
-            )}
+            <a
+              href={`mailto:${contact.email}`}
+              className="btn-secondary"
+              style={{ padding: '0.4rem 0.875rem', fontSize: '0.8125rem', display: 'inline-block', alignSelf: 'flex-start' }}
+            >
+              Compose Email
+            </a>
+
+            <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--color-border)', fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'flex-start', gap: '0.375rem' }}>
+              <Info size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
+              <span>{contact.emailStatusNotice}</span>
+            </div>
           </div>
 
           {/* Operating Address & Hours */}
-          <div style={{ backgroundColor: '#FFFFFF', padding: '1.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
+          <div style={{ backgroundColor: '#FFFFFF', padding: '1.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-sm)', display: 'flex', flexDirection: 'column' }}>
             <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: 'rgba(92, 6, 28, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-maroon)', marginBottom: '1.25rem' }}>
               <MapPin size={22} />
             </div>
             <h3 style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--color-maroon)', marginBottom: '0.5rem' }}>
-              Operating Facility
+              Dispatch Facility
             </h3>
             <p style={{ fontSize: '0.875rem', color: 'var(--color-text-light)', marginBottom: '0.5rem' }}>
               Home-based Dispatch Studio:
             </p>
-            <div style={{ fontSize: '0.875rem', color: 'var(--color-text)', lineHeight: 1.6, marginBottom: '1rem' }}>
+            <div style={{ fontSize: '0.875rem', color: 'var(--color-text)', lineHeight: 1.6, marginBottom: '0.75rem' }}>
               {contact.fullAddress}
             </div>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', fontSize: '0.8125rem', color: 'var(--color-text-light)', borderTop: '1px solid var(--color-border)', paddingTop: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', fontSize: '0.8125rem', color: 'var(--color-text-light)', borderTop: '1px solid var(--color-border)', paddingTop: '0.75rem', marginBottom: '0.75rem' }}>
               <Clock size={16} color="var(--color-gold-dark)" style={{ flexShrink: 0, marginTop: '2px' }} />
               <span>{contact.supportHours}</span>
+            </div>
+
+            <div style={{ marginTop: 'auto', paddingTop: '0.5rem', borderTop: '1px solid var(--color-border)', fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'flex-start', gap: '0.375rem' }}>
+              <Info size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
+              <span>{contact.addressStatusNotice}</span>
             </div>
           </div>
         </div>
