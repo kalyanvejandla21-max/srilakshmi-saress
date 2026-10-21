@@ -310,6 +310,29 @@ async function runTests() {
     if (!data.success) throw new Error('Serviceability check failed');
   });
 
+  // 16. Email Notification Configuration Status
+  await assertTest('GET /api/admin/notifications/status returns notification status safely without exposing secrets', async () => {
+    const res = await fetch(`${BASE_URL}/api/admin/notifications/status`);
+    if (!res.ok) throw new Error(`Status ${res.status}`);
+    const data = await res.json();
+    if (!data.success || typeof data.isConfigured !== 'boolean') {
+      throw new Error('Notification status response invalid');
+    }
+    if (data.smtpPass || data.password) {
+      throw new Error('CRITICAL: Raw SMTP password exposed by status endpoint!');
+    }
+  });
+
+  // 17. Admin Protected Notification Trigger Endpoint
+  await assertTest('POST /api/admin/orders/:id/resend-notification blocks unauthorized requests', async () => {
+    const res = await fetch(`${BASE_URL}/api/admin/orders/${createdOrderNumber || 'SLS-TEST'}/resend-notification`, {
+      method: 'POST'
+    });
+    if (res.status !== 401) {
+      throw new Error(`Expected 401 Unauthorized, received ${res.status}`);
+    }
+  });
+
   console.log(`\n======================================================`);
   console.log(`🏁 Test Results: ${passed} Passed, ${failed} Failed`);
   console.log(`======================================================\n`);

@@ -19,6 +19,12 @@ import {
   scheduleCourierPickup,
   trackAwbNumber,
 } from './shiprocket.js';
+import {
+  isMailerConfigured,
+  getNotificationEmail,
+  sendOrderNotificationEmail,
+  sendTestNotificationEmail,
+} from './mailer.js';
 
 // Load environment variables from .env
 dotenv.config();
@@ -223,6 +229,8 @@ const OrderSchema = new mongoose.Schema(
     razorpaySignature: { type: String, default: null },
     paymentFailureReason: { type: String, default: null },
     idempotencyKey: { type: String, default: null, index: true },
+    emailNotificationSent: { type: Boolean, default: false },
+    emailNotificationSentAt: { type: String, default: null },
     createdAt: { type: String, default: () => new Date().toISOString() },
     updatedAt: { type: String, default: () => new Date().toISOString() },
   },
@@ -659,6 +667,8 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
       razorpaySignature: null,
       paymentFailureReason: null,
       idempotencyKey: idempotencyKey || null,
+      emailNotificationSent: false,
+      emailNotificationSentAt: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -678,6 +688,19 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
 
         const orderResponse = createdDoc.toObject ? createdDoc.toObject() : createdDoc;
         delete orderResponse._id;
+
+        // If Cash on Delivery, order is confirmed immediately. Trigger email alert asynchronously.
+        if (newOrder.paymentMethod === 'COD') {
+          sendOrderNotificationEmail(orderResponse).then(async (mailResult) => {
+            if (mailResult && mailResult.success) {
+              await OrderModel.updateOne(
+                { id: orderResponse.id },
+                { $set: { emailNotificationSent: true, emailNotificationSentAt: new Date().toISOString() } }
+              ).catch((e) => console.error('[Order] Failed to mark email notification sent:', e.message));
+            }
+          }).catch((err) => console.error('[Order] Error in email notification flow:', err.message));
+        }
+
         return res.status(201).json({ success: true, order: orderResponse });
       } catch (dbErr) {
         if (dbErr.code === 11000) {
@@ -688,6 +711,18 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
             const retryDoc = await OrderModel.create(newOrder);
             const retryResponse = retryDoc.toObject ? retryDoc.toObject() : retryDoc;
             delete retryResponse._id;
+
+            if (newOrder.paymentMethod === 'COD') {
+              sendOrderNotificationEmail(retryResponse).then(async (mailResult) => {
+                if (mailResult && mailResult.success) {
+                  await OrderModel.updateOne(
+                    { id: retryResponse.id },
+                    { $set: { emailNotificationSent: true, emailNotificationSentAt: new Date().toISOString() } }
+                  ).catch((e) => console.error('[Order] Failed to mark email notification sent:', e.message));
+                }
+              }).catch((err) => console.error('[Order] Error in email notification flow:', err.message));
+            }
+
             return res.status(201).json({ success: true, order: retryResponse });
           } catch (retryErr) {
             console.error('Fatal retry error saving order to MongoDB:', retryErr.message);
@@ -724,6 +759,12 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
       }
     }
     saveDbData(db);
+
+    if (newOrder.paymentMethod === 'COD') {
+      sendOrderNotificationEmail(newOrder).catch((err) =>
+        console.error('[Order] Error in dev email notification flow:', err.message)
+      );
+    }
 
     return res.status(201).json({ success: true, order: newOrder });
   } catch (error) {
@@ -1269,6 +1310,30 @@ app.post('/api/payments/verify-razorpay', async (req, res) => {
       }
     }
 
+    // Send order notification email for verified paid online orders
+    if (updatedOrder && !updatedOrder.emailNotificationSent) {
+      sendOrderNotificationEmail(updatedOrder).then(async (mailResult) => {
+        if (mailResult && mailResult.success) {
+          if (isMongoReady()) {
+            await OrderModel.updateOne(
+              query,
+              { $set: { emailNotificationSent: true, emailNotificationSentAt: new Date().toISOString() } }
+            ).catch((e) => console.error('[Payment] Failed to update emailNotificationSent:', e.message));
+          } else {
+            const db = getDbData();
+            const localOrd = (db.orders || []).find(
+              (o) => (orderNumber && o.orderNumber === orderNumber) || o.razorpayOrderId === razorpay_order_id
+            );
+            if (localOrd) {
+              localOrd.emailNotificationSent = true;
+              localOrd.emailNotificationSentAt = new Date().toISOString();
+              saveDbData(db);
+            }
+          }
+        }
+      }).catch((err) => console.error('[Payment] Error sending notification email:', err.message));
+    }
+
     return res.json({
       success: true,
       message: 'Payment verified and order confirmed successfully',
@@ -1351,11 +1416,33 @@ app.post('/api/payments/webhook', async (req, res) => {
         };
 
         if (isMongoReady()) {
+          const existing = await OrderModel.findOne({ razorpayOrderId: rzpOrderId }).lean();
+          if (existing && !existing.emailNotificationSent) {
+            const updated = { ...existing, ...updateFields };
+            sendOrderNotificationEmail(updated).then(async (mailResult) => {
+              if (mailResult && mailResult.success) {
+                await OrderModel.updateOne(
+                  { razorpayOrderId: rzpOrderId },
+                  { $set: { emailNotificationSent: true, emailNotificationSentAt: new Date().toISOString() } }
+                ).catch((e) => console.error('[Webhook] Failed to update emailNotificationSent:', e.message));
+              }
+            }).catch((err) => console.error('[Webhook] Error sending notification email:', err.message));
+          }
           await OrderModel.updateOne({ razorpayOrderId: rzpOrderId }, { $set: updateFields });
         } else {
           const db = getDbData();
           const ord = (db.orders || []).find((o) => o.razorpayOrderId === rzpOrderId);
           if (ord) {
+            if (!ord.emailNotificationSent) {
+              const updated = { ...ord, ...updateFields };
+              sendOrderNotificationEmail(updated).then((mailResult) => {
+                if (mailResult && mailResult.success) {
+                  ord.emailNotificationSent = true;
+                  ord.emailNotificationSentAt = new Date().toISOString();
+                  saveDbData(db);
+                }
+              }).catch((err) => console.error('[Webhook] Error sending notification email:', err.message));
+            }
             Object.assign(ord, updateFields);
             saveDbData(db);
           }
@@ -1507,6 +1594,92 @@ app.post('/api/admin/orders/:id/dispatch-shiprocket', authenticateAdmin, async (
 app.post('/api/shipments/webhook', (req, res) => {
   console.log('Received Shiprocket courier webhook payload:', req.body);
   res.json({ received: true });
+});
+
+// ==========================================
+// --- NOTIFICATION STATUS & TESTING ENDPOINTS ---
+// ==========================================
+
+// Check Email Notification Configuration Status (Safe for public/admin checks, no secrets exposed)
+app.get('/api/admin/notifications/status', (req, res) => {
+  const isConfigured = isMailerConfigured();
+  res.json({
+    success: true,
+    isConfigured,
+    notificationEmail: getNotificationEmail(),
+    smtpHost: process.env.SMTP_HOST || 'smtp.gmail.com',
+    smtpPort: parseInt(process.env.SMTP_PORT || '587', 10),
+    smtpUser: process.env.SMTP_USER ? process.env.SMTP_USER.replace(/(.{2})(.*)(@.*)/, '$1***$3') : null,
+    message: isConfigured
+      ? 'Email notification service is configured and ready.'
+      : 'SMTP credentials not configured. Orders are saved, but email alerts require SMTP_USER and SMTP_PASS in environment.',
+  });
+});
+
+// Admin Endpoint: Dispatch Test Notification to Business Email
+app.post('/api/admin/notifications/test-email', authenticateAdmin, async (req, res) => {
+  try {
+    const { targetEmail } = req.body || {};
+    const result = await sendTestNotificationEmail(targetEmail);
+    if (result.success) {
+      return res.json({
+        success: true,
+        message: `Test order notification delivered to ${result.recipient}!`,
+        messageId: result.messageId,
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Failed to deliver test email',
+        details: result.error || result.reason,
+        step: result.step,
+      });
+    }
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to process test email request', details: error.message });
+  }
+});
+
+// Admin Endpoint: Resend Order Notification for Any Existing Order
+app.post('/api/admin/orders/:id/resend-notification', authenticateAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    let foundOrder = null;
+
+    if (isMongoReady()) {
+      foundOrder = await OrderModel.findOne({ $or: [{ id }, { orderNumber: id }] }).lean();
+    } else {
+      const db = getDbData();
+      foundOrder = (db.orders || []).find((o) => o.id === id || o.orderNumber === id);
+    }
+
+    if (!foundOrder) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const mailResult = await sendOrderNotificationEmail(foundOrder);
+    if (mailResult.success) {
+      if (isMongoReady()) {
+        await OrderModel.updateOne(
+          { $or: [{ id }, { orderNumber: id }] },
+          { $set: { emailNotificationSent: true, emailNotificationSentAt: new Date().toISOString() } }
+        );
+      }
+      return res.json({
+        success: true,
+        message: `Order notification resent to ${mailResult.recipient}`,
+        messageId: mailResult.messageId,
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Could not send email notification',
+        details: mailResult.error || mailResult.reason,
+      });
+    }
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to resend order notification', details: error.message });
+  }
 });
 
 // Start Express Server - Bound to 0.0.0.0 for Cloud Containers (Render / Docker)
