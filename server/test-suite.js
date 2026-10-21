@@ -318,8 +318,11 @@ async function runTests() {
     if (!data.success || typeof data.isConfigured !== 'boolean') {
       throw new Error('Notification status response invalid');
     }
-    if (data.smtpPass || data.password) {
-      throw new Error('CRITICAL: Raw SMTP password exposed by status endpoint!');
+    if (!data.provider || !data.transportType) {
+      throw new Error('Notification status missing provider or transportType');
+    }
+    if (data.smtpPass || data.password || data.resendApiKey || data.brevoApiKey) {
+      throw new Error('CRITICAL: Provider secrets exposed by status endpoint!');
     }
   });
 
@@ -330,6 +333,39 @@ async function runTests() {
     });
     if (res.status !== 401) {
       throw new Error(`Expected 401 Unauthorized, received ${res.status}`);
+    }
+  });
+
+  // 18. Admin Protected Test-Email Trigger Endpoint
+  await assertTest('POST /api/admin/notifications/test-email blocks unauthorized requests with 401', async () => {
+    const res = await fetch(`${BASE_URL}/api/admin/notifications/test-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetEmail: 'test@example.com' })
+    });
+    if (res.status !== 401) {
+      throw new Error(`Expected 401 Unauthorized, received ${res.status}`);
+    }
+  });
+
+  // 19. Admin Authenticated Test-Email Handling (safe diagnostic execution)
+  await assertTest('POST /api/admin/notifications/test-email responds cleanly without unhandled exceptions', async () => {
+    if (!adminJwtToken) throw new Error('Missing admin token');
+    const res = await fetch(`${BASE_URL}/api/admin/notifications/test-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminJwtToken}`
+      },
+      body: JSON.stringify({ targetEmail: 'test@example.com' })
+    });
+    // Either 200 (if active provider) or 400 (if unconfigured / connection blocked in local test)
+    if (res.status !== 200 && res.status !== 400) {
+      throw new Error(`Expected 200 or 400 status, received ${res.status}`);
+    }
+    const data = await res.json();
+    if (!data.provider && !data.step && !data.message) {
+      throw new Error('Response missing diagnostic metadata');
     }
   });
 

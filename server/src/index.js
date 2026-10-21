@@ -22,6 +22,8 @@ import {
 import {
   isMailerConfigured,
   getNotificationEmail,
+  getMailerProvider,
+  getSenderEmail,
   sendOrderNotificationEmail,
   sendTestNotificationEmail,
 } from './mailer.js';
@@ -1603,16 +1605,25 @@ app.post('/api/shipments/webhook', (req, res) => {
 // Check Email Notification Configuration Status (Safe for public/admin checks, no secrets exposed)
 app.get('/api/admin/notifications/status', (req, res) => {
   const isConfigured = isMailerConfigured();
+  const provider = getMailerProvider();
+  let transportType = 'none';
+  if (provider === 'resend') transportType = 'HTTPS (Resend REST API - Port 443)';
+  else if (provider === 'brevo') transportType = 'HTTPS (Brevo REST API - Port 443)';
+  else if (provider === 'smtp') transportType = 'Direct SMTP (Nodemailer - Port 587)';
+
   res.json({
     success: true,
     isConfigured,
+    provider,
+    transportType,
     notificationEmail: getNotificationEmail(),
-    smtpHost: process.env.SMTP_HOST || 'smtp.gmail.com',
-    smtpPort: parseInt(process.env.SMTP_PORT || '587', 10),
+    sender: getSenderEmail(),
+    smtpHost: provider === 'smtp' ? (process.env.SMTP_HOST || 'smtp.gmail.com') : null,
+    smtpPort: provider === 'smtp' ? parseInt(process.env.SMTP_PORT || '587', 10) : null,
     smtpUser: process.env.SMTP_USER ? process.env.SMTP_USER.replace(/(.{2})(.*)(@.*)/, '$1***$3') : null,
     message: isConfigured
-      ? 'Email notification service is configured and ready.'
-      : 'SMTP credentials not configured. Orders are saved, but email alerts require SMTP_USER and SMTP_PASS in environment.',
+      ? `Email notification service is active via ${provider.toUpperCase()} (${transportType}).`
+      : 'No email provider configured. For Render, configure RESEND_API_KEY (recommended HTTPS API) or SMTP credentials in environment.',
   });
 });
 
@@ -1626,6 +1637,7 @@ app.post('/api/admin/notifications/test-email', authenticateAdmin, async (req, r
         success: true,
         message: `Test order notification delivered to ${result.recipient}!`,
         messageId: result.messageId,
+        provider: result.provider,
       });
     } else {
       return res.status(400).json({
@@ -1633,6 +1645,7 @@ app.post('/api/admin/notifications/test-email', authenticateAdmin, async (req, r
         message: 'Failed to deliver test email',
         details: result.error || result.reason,
         step: result.step,
+        provider: result.provider,
       });
     }
   } catch (error) {

@@ -2,6 +2,14 @@
  * Sri Lakshmi Sarees - Order Email Notification Service
  * Sends automated, secure order alerts to the configured business inbox.
  *
+ * Multi-Provider Architecture:
+ * 1. Resend (HTTPS REST API - Port 443): Highly recommended for cloud platforms (Render, Vercel).
+ *    Never blocked by cloud firewall SMTP port restrictions. Set RESEND_API_KEY.
+ * 2. Brevo (HTTPS REST API - Port 443): Alternative cloud transactional provider.
+ *    Set BREVO_API_KEY and optionally BREVO_SENDER_EMAIL.
+ * 3. Direct SMTP (Nodemailer - Port 587/465): For local development or non-firewalled VPS.
+ *    Set SMTP_USER and SMTP_PASS (with Gmail App Password).
+ *
  * Security & Reliability Safeguards:
  * - Credentials read strictly from backend environment variables.
  * - Sensitive customer payment secrets and raw passwords are never included.
@@ -17,16 +25,57 @@ export const getNotificationEmail = () => {
 };
 
 /**
- * Check if SMTP credentials are fully provided in backend environment.
+ * Detect active mailer provider based on environment variables.
+ * Priority: resend > brevo > smtp > none
+ *
+ * @returns {'resend' | 'brevo' | 'smtp' | 'none'}
  */
-export const isMailerConfigured = () => {
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  return Boolean(user && pass && user.trim() && pass.trim());
+export const getMailerProvider = () => {
+  if (process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.trim()) {
+    return 'resend';
+  }
+  if (process.env.BREVO_API_KEY && process.env.BREVO_API_KEY.trim()) {
+    return 'brevo';
+  }
+  if (
+    process.env.SMTP_USER &&
+    process.env.SMTP_PASS &&
+    process.env.SMTP_USER.trim() &&
+    process.env.SMTP_PASS.trim()
+  ) {
+    return 'smtp';
+  }
+  return 'none';
 };
 
 /**
- * Build a reusable nodemailer transporter instance.
+ * Check if at least one email dispatch provider is configured.
+ */
+export const isMailerConfigured = () => {
+  return getMailerProvider() !== 'none';
+};
+
+/**
+ * Resolve the sender address string for the active provider.
+ */
+export const getSenderEmail = () => {
+  const provider = getMailerProvider();
+  if (provider === 'resend') {
+    return (process.env.EMAIL_FROM || 'Sri Lakshmi Sarees <onboarding@resend.dev>').trim();
+  }
+  if (provider === 'brevo') {
+    const sender = (process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER || getNotificationEmail()).trim();
+    return process.env.EMAIL_FROM ? process.env.EMAIL_FROM.trim() : `"Sri Lakshmi Sarees" <${sender}>`;
+  }
+  if (provider === 'smtp') {
+    const user = (process.env.SMTP_USER || 'orders@srilakshmisarees.com').trim();
+    return process.env.EMAIL_FROM ? process.env.EMAIL_FROM.trim() : `"Sri Lakshmi Sarees" <${user}>`;
+  }
+  return (process.env.EMAIL_FROM || 'no-reply@srilakshmisarees.com').trim();
+};
+
+/**
+ * Build a reusable nodemailer transporter instance for SMTP fallback.
  */
 export const createTransporter = () => {
   const host = (process.env.SMTP_HOST || 'smtp.gmail.com').trim();
@@ -40,7 +89,6 @@ export const createTransporter = () => {
     port,
     secure,
     auth: user && pass ? { user, pass } : undefined,
-    // Sensible connection timeouts
     connectionTimeout: 10000,
     greetingTimeout: 10000,
     socketTimeout: 15000,
@@ -99,7 +147,7 @@ export const generateOrderEmailContent = (order) => {
   ].filter(Boolean).join(', ');
 
   // Table rows for items
-  const itemsHtml = items.map((item, idx) => `
+  const itemsHtml = items.map((item) => `
     <tr style="border-bottom: 1px solid #E5E7EB;">
       <td style="padding: 10px 12px; font-size: 14px; color: #1F2937;">
         <strong>${item.productName || 'Silk Saree'}</strong>
@@ -302,24 +350,198 @@ Please prepare parcel for shipment.
 };
 
 /**
+ * Dispatch an email via Resend HTTPS REST API (Port 443).
+ */
+async function sendViaResend({ recipient, subject, html, text }) {
+  const apiKey = (process.env.RESEND_API_KEY || '').trim();
+  const from = (process.env.EMAIL_FROM || 'Sri Lakshmi Sarees <onboarding@resend.dev>').trim();
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from,
+      to: [recipient],
+      subject,
+      html,
+      text,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const errorMsg = data.message || `Resend API returned HTTP ${response.status}`;
+    const err = new Error(errorMsg);
+    err.provider = 'resend';
+    err.status = response.status;
+    throw err;
+  }
+
+  return {
+    success: true,
+    messageId: data.id,
+    provider: 'resend',
+  };
+}
+
+/**
+ * Dispatch an email via Brevo HTTPS REST API (Port 443).
+ */
+async function sendViaBrevo({ recipient, subject, html, text }) {
+  const apiKey = (process.env.BREVO_API_KEY || '').trim();
+  const senderEmail = (process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER || getNotificationEmail()).trim();
+  const fromName = 'Sri Lakshmi Sarees';
+
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'api-key': apiKey,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({
+      sender: { name: fromName, email: senderEmail },
+      to: [{ email: recipient }],
+      subject,
+      htmlContent: html,
+      textContent: text,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const errorMsg = data.message || `Brevo API returned HTTP ${response.status}`;
+    const err = new Error(errorMsg);
+    err.provider = 'brevo';
+    err.status = response.status;
+    throw err;
+  }
+
+  return {
+    success: true,
+    messageId: data.messageId,
+    provider: 'brevo',
+  };
+}
+
+/**
+ * Dispatch an email via Direct SMTP (Nodemailer).
+ */
+async function sendViaSmtp({ recipient, subject, html, text }) {
+  const transporter = createTransporter();
+  const senderEmail = (process.env.SMTP_USER || 'orders@srilakshmisarees.com').trim();
+  const from = process.env.EMAIL_FROM
+    ? process.env.EMAIL_FROM.trim()
+    : `"Sri Lakshmi Sarees" <${senderEmail}>`;
+
+  const info = await transporter.sendMail({
+    from,
+    to: recipient,
+    subject,
+    text,
+    html,
+  });
+
+  return {
+    success: true,
+    messageId: info.messageId,
+    provider: 'smtp',
+  };
+}
+
+/**
+ * Classify errors safely into actionable diagnostic messages without leaking secrets.
+ */
+function classifyEmailError(error, provider) {
+  const msg = error?.message || String(error);
+  const code = error?.code || '';
+
+  // 1. Connection / Port Restrictions (Render SMTP blocks)
+  if (
+    code === 'ETIMEDOUT' ||
+    code === 'ECONNREFUSED' ||
+    msg.toLowerCase().includes('timeout') ||
+    msg.toLowerCase().includes('timed out')
+  ) {
+    return {
+      step: 'NETWORK_CONNECTION',
+      message:
+        'Outbound connection timed out. Cloud hosting environments (like Render) block direct outbound SMTP traffic on ports 587, 465, and 25. To enable delivery, configure an HTTPS transactional provider (set RESEND_API_KEY in Render Environment).',
+      raw: msg,
+    };
+  }
+
+  // 2. SMTP 535 Bad Credentials
+  if (msg.includes('535') || error?.responseCode === 535) {
+    return {
+      step: 'AUTHENTICATION',
+      message:
+        'SMTP authentication failed (535). If using Gmail, verify you are using a 16-character Google App Password (not your primary account password) with 2-Step Verification enabled.',
+      raw: msg,
+    };
+  }
+
+  // 3. Resend Specific Errors
+  if (provider === 'resend') {
+    if (error?.status === 401 || msg.toLowerCase().includes('api key')) {
+      return {
+        step: 'AUTHENTICATION',
+        message: 'Invalid or missing RESEND_API_KEY. Verify the API key in your Render Environment settings.',
+        raw: msg,
+      };
+    }
+    if (error?.status === 403 || msg.toLowerCase().includes('verify') || msg.toLowerCase().includes('domain')) {
+      return {
+        step: 'DOMAIN_AUTHORIZATION',
+        message:
+          'Resend domain policy restriction: On the free Resend tier without custom domain verification, emails can only be sent from onboarding@resend.dev to the email address registered with your Resend account.',
+        raw: msg,
+      };
+    }
+  }
+
+  // 4. Brevo Specific Errors
+  if (provider === 'brevo') {
+    if (error?.status === 401 || msg.toLowerCase().includes('key not found') || msg.toLowerCase().includes('unauthorized')) {
+      return {
+        step: 'AUTHENTICATION',
+        message: 'Invalid BREVO_API_KEY. Verify the API key in your Render Environment settings.',
+        raw: msg,
+      };
+    }
+  }
+
+  return {
+    step: 'DELIVERY_DISPATCH',
+    message: msg,
+    raw: msg,
+  };
+}
+
+/**
  * Send order notification email to the configured business inbox.
  *
  * @param {Object} order - Full order object
- * @param {Object} [options] - Additional options (e.g. triggerSource, customRecipient)
- * @returns {Promise<{ success: boolean, simulated?: boolean, messageId?: string, error?: string }>}
+ * @param {Object} [options] - Additional options (e.g. triggerSource, recipient)
+ * @returns {Promise<{ success: boolean, simulated?: boolean, messageId?: string, provider?: string, error?: string }>}
  */
 export const sendOrderNotificationEmail = async (order, options = {}) => {
   const recipient = (options.recipient || getNotificationEmail()).trim();
   const orderNumber = order?.orderNumber || order?.id || 'UNKNOWN';
+  const provider = getMailerProvider();
 
-  // Safeguard: Check if SMTP is configured
-  if (!isMailerConfigured()) {
+  if (provider === 'none') {
     console.info(
-      `[Mailer] SMTP not configured. Notification for order #${orderNumber} (${order.paymentMethod} - ${order.paymentStatus}) logged safely. To enable live delivery, set SMTP_USER and SMTP_PASS in environment.`
+      `[Mailer] No email provider configured. Notification for order #${orderNumber} (${order.paymentMethod} - ${order.paymentStatus}) logged safely. To enable live delivery on Render, set RESEND_API_KEY in environment.`
     );
     return {
       success: false,
-      reason: 'SMTP_NOT_CONFIGURED',
+      reason: 'MAILER_NOT_CONFIGURED',
       simulated: true,
       recipient,
       orderNumber,
@@ -327,37 +549,34 @@ export const sendOrderNotificationEmail = async (order, options = {}) => {
   }
 
   try {
-    const transporter = createTransporter();
     const { subject, html, text } = generateOrderEmailContent(order);
+    console.info(`[Mailer] Dispatching order alert for #${orderNumber} to ${recipient} via [${provider.toUpperCase()}]...`);
 
-    const senderEmail = (process.env.SMTP_USER || 'orders@srilakshmisarees.com').trim();
-    const from = process.env.EMAIL_FROM
-      ? process.env.EMAIL_FROM.trim()
-      : `"Sri Lakshmi Sarees" <${senderEmail}>`;
+    let result;
+    if (provider === 'resend') {
+      result = await sendViaResend({ recipient, subject, html, text });
+    } else if (provider === 'brevo') {
+      result = await sendViaBrevo({ recipient, subject, html, text });
+    } else {
+      result = await sendViaSmtp({ recipient, subject, html, text });
+    }
 
-    console.info(`[Mailer] Dispatching order alert for #${orderNumber} to ${recipient}...`);
-
-    const info = await transporter.sendMail({
-      from,
-      to: recipient,
-      subject,
-      text,
-      html,
-    });
-
-    console.info(`[Mailer] Order alert sent successfully! MessageID: ${info.messageId}`);
+    console.info(`[Mailer] Order alert delivered successfully via ${provider}! MessageID: ${result.messageId}`);
     return {
       success: true,
-      messageId: info.messageId,
+      messageId: result.messageId,
+      provider,
       recipient,
       orderNumber,
     };
   } catch (error) {
-    // Safe error logging: Do NOT log passwords or secrets
-    console.error(`[Mailer] Failed to send order notification for #${orderNumber}:`, error.message);
+    const classified = classifyEmailError(error, provider);
+    console.error(`[Mailer] Failed to send order notification for #${orderNumber} via ${provider}:`, classified.message);
     return {
       success: false,
-      error: error.message,
+      error: classified.message,
+      step: classified.step,
+      provider,
       recipient,
       orderNumber,
     };
@@ -365,39 +584,46 @@ export const sendOrderNotificationEmail = async (order, options = {}) => {
 };
 
 /**
- * Send a verification / test email to confirm live SMTP delivery without placing a payment.
+ * Send a verification / test email to confirm live delivery without placing a payment.
  *
  * @param {string} [targetEmail] - Optional target email address (defaults to business notification email)
- * @returns {Promise<{ success: boolean, messageId?: string, details?: any, error?: string }>}
+ * @returns {Promise<{ success: boolean, messageId?: string, provider?: string, details?: any, error?: string, step?: string }>}
  */
 export const sendTestNotificationEmail = async (targetEmail) => {
   const recipient = (targetEmail || getNotificationEmail()).trim();
+  const provider = getMailerProvider();
 
-  if (!isMailerConfigured()) {
+  if (provider === 'none') {
     return {
       success: false,
-      reason: 'SMTP_NOT_CONFIGURED',
-      message: 'SMTP credentials (SMTP_USER / SMTP_PASS) are not set in the environment variables.',
+      reason: 'MAILER_NOT_CONFIGURED',
+      message:
+        'No email provider configured. On Render, set RESEND_API_KEY (recommended HTTPS API) or SMTP credentials in Environment Variables.',
       recipient,
+      provider: 'none',
     };
   }
 
-  const transporter = createTransporter();
-
-  // 1. Verify SMTP connection first
-  try {
-    await transporter.verify();
-  } catch (verifyErr) {
-    console.error('[Mailer] Transporter verification failed:', verifyErr.message);
-    return {
-      success: false,
-      step: 'TRANSPORTER_VERIFICATION',
-      error: verifyErr.message,
-      recipient,
-    };
+  // If SMTP mode is selected, test TCP socket connection first
+  if (provider === 'smtp') {
+    const transporter = createTransporter();
+    try {
+      await transporter.verify();
+    } catch (verifyErr) {
+      const classified = classifyEmailError(verifyErr, 'smtp');
+      console.error('[Mailer] SMTP connection verification failed:', classified.message);
+      return {
+        success: false,
+        step: classified.step,
+        error: classified.message,
+        details: classified.raw,
+        provider: 'smtp',
+        recipient,
+      };
+    }
   }
 
-  // 2. Build mock verified test order
+  // Build mock verified test order
   const mockOrder = {
     id: `ord-test-${Date.now()}`,
     orderNumber: `SLS-TEST-${Math.floor(100000 + Math.random() * 900000)}`,

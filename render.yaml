@@ -23,8 +23,16 @@ services:
         sync: false
       - key: RAZORPAY_KEY_SECRET
         sync: false
+      # Email Notification Providers (Resend recommended for Render HTTPS)
+      - key: RESEND_API_KEY
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
       - key: NOTIFICATION_EMAIL
         value: bhavanivejandla6@gmail.com
+      - key: EMAIL_FROM
+        value: "Sri Lakshmi Sarees <onboarding@resend.dev>"
+      # Direct SMTP (Local dev fallback)
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT
@@ -32,4 +40,11 @@ services:
       - key: SMTP_USER
         sync: false
       - key: SMTP_PASS
+        sync: false
+      # Admin Credentials
+      - key: ADMIN_EMAIL
+        value: admin@srilakshmisarees.com
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: JWT_SECRET
         sync: false
