@@ -102,7 +102,7 @@ export const MegaMenu: React.FC<MegaMenuProps> = ({ onClose }) => {
                 Pure Mulberry Silk Weaves
               </h3>
               <p style={{ fontSize: '0.8125rem', color: '#E8E2D9', marginBottom: '1rem' }}>
-                Authentic silk sarees with genuine silver-gold zari woven directly by Kanchipuram master weavers.
+                Handpicked traditional silk sarees featuring classic zari borders and rich pallu weaves.
               </p>
               <Link
                 to="/shop?category=Silk+Sarees"

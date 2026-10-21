@@ -30,6 +30,8 @@ export const MobileDrawer: React.FC<MobileDrawerProps> = ({ isOpen, onClose }) =
     { title: 'Best Sellers', link: '/shop?category=Best+Sellers' },
     { title: 'Sale', link: '/shop?category=Sale', isSale: true },
     { title: 'Track Order', link: '/track-order' },
+    { title: 'About Us', link: '/about' },
+    { title: 'Contact Us', link: '/contact' },
   ];
 
   return (

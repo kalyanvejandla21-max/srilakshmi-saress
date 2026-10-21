@@ -22,6 +22,8 @@ import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { AccountPage } from './pages/AccountPage';
 import { PolicyPage } from './pages/PolicyPage';
+import { AboutPage } from './pages/AboutPage';
+import { ContactPage } from './pages/ContactPage';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { getStoredAnnouncement } from './services/api';
 
@@ -84,6 +86,8 @@ const AppLayout: React.FC = () => {
           <Route path="/account" element={<AccountPage />} />
           <Route path="/policy" element={<Navigate to="/policy/shipping" replace />} />
           <Route path="/policy/:policyType" element={<PolicyPage />} />
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="/contact" element={<ContactPage />} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

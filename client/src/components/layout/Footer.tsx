@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Mail, Phone, MapPin, Instagram, Facebook, ShieldCheck, Truck, RefreshCw, Lock } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
+import { BUSINESS_CONFIG } from '../../config/businessConfig';
 
 export const Footer: React.FC = () => {
   const [newsletterEmail, setNewsletterEmail] = useState('');
@@ -26,8 +27,8 @@ export const Footer: React.FC = () => {
                 <ShieldCheck size={24} />
               </div>
               <div>
-                <h4 style={{ color: '#FFFFFF', fontSize: '1rem', fontWeight: 600 }}>100% Authentic Silk</h4>
-                <p style={{ color: '#9E9A93', fontSize: '0.8125rem' }}>Handwoven by Master Artisans</p>
+                <h4 style={{ color: '#FFFFFF', fontSize: '1rem', fontWeight: 600 }}>{BUSINESS_CONFIG.claims.fabricBadgeTitle}</h4>
+                <p style={{ color: '#9E9A93', fontSize: '0.8125rem' }}>{BUSINESS_CONFIG.claims.fabricBadgeSubtitle}</p>
               </div>
             </div>
 
@@ -36,8 +37,8 @@ export const Footer: React.FC = () => {
                 <Truck size={24} />
               </div>
               <div>
-                <h4 style={{ color: '#FFFFFF', fontSize: '1rem', fontWeight: 600 }}>Insured Express Delivery</h4>
-                <p style={{ color: '#9E9A93', fontSize: '0.8125rem' }}>Free shipping on orders over ₹2,999</p>
+                <h4 style={{ color: '#FFFFFF', fontSize: '1rem', fontWeight: 600 }}>{BUSINESS_CONFIG.claims.deliveryBadgeTitle}</h4>
+                <p style={{ color: '#9E9A93', fontSize: '0.8125rem' }}>{BUSINESS_CONFIG.claims.deliveryBadgeSubtitle}</p>
               </div>
             </div>
 
@@ -46,8 +47,8 @@ export const Footer: React.FC = () => {
                 <RefreshCw size={24} />
               </div>
               <div>
-                <h4 style={{ color: '#FFFFFF', fontSize: '1rem', fontWeight: 600 }}>Easy 7-Day Returns</h4>
-                <p style={{ color: '#9E9A93', fontSize: '0.8125rem' }}>Hassle-free reverse pickup policy</p>
+                <h4 style={{ color: '#FFFFFF', fontSize: '1rem', fontWeight: 600 }}>{BUSINESS_CONFIG.claims.returnsBadgeTitle}</h4>
+                <p style={{ color: '#9E9A93', fontSize: '0.8125rem' }}>{BUSINESS_CONFIG.claims.returnsBadgeSubtitle}</p>
               </div>
             </div>
 
@@ -56,8 +57,8 @@ export const Footer: React.FC = () => {
                 <Lock size={24} />
               </div>
               <div>
-                <h4 style={{ color: '#FFFFFF', fontSize: '1rem', fontWeight: 600 }}>Secure Online Checkout</h4>
-                <p style={{ color: '#9E9A93', fontSize: '0.8125rem' }}>Razorpay SSL Encrypted Payments</p>
+                <h4 style={{ color: '#FFFFFF', fontSize: '1rem', fontWeight: 600 }}>{BUSINESS_CONFIG.claims.checkoutBadgeTitle}</h4>
+                <p style={{ color: '#9E9A93', fontSize: '0.8125rem' }}>{BUSINESS_CONFIG.claims.checkoutBadgeSubtitle}</p>
               </div>
             </div>
           </div>
@@ -71,24 +72,24 @@ export const Footer: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
               <img src="/saree-logo.svg" alt="Sri Lakshmi Sarees" style={{ width: '36px', height: '36px' }} />
               <span style={{ fontFamily: 'var(--font-serif)', fontSize: '1.5rem', color: '#FFFFFF', fontWeight: 700 }}>
-                Sri Lakshmi Sarees
+                {BUSINESS_CONFIG.brandName}
               </span>
             </div>
             <p style={{ color: '#B5B0A6', fontSize: '0.875rem', lineHeight: 1.7, marginBottom: '1.5rem' }}>
-              Sri Lakshmi Sarees celebrates Indian textile heritage with pure handloom Kanjivaram silk, Chanderi cotton, bridal red temple weaves, and contemporary designer sarees crafted by traditional master weavers.
+              Sri Lakshmi Sarees is a family-run home enterprise curating handpicked traditional sarees across pure silk, festive weaves, soft Chanderi and breathable daily-wear cotton handlooms.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem', fontSize: '0.875rem', color: '#B5B0A6' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                <MapPin size={16} color="var(--color-gold)" />
-                <span>108 Silk Weaver Street, Kanchipuram, Tamil Nadu 631501</span>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.625rem' }}>
+                <MapPin size={16} color="var(--color-gold)" style={{ flexShrink: 0, marginTop: '3px' }} />
+                <span>{BUSINESS_CONFIG.contact.fullAddress}</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                <Phone size={16} color="var(--color-gold)" />
-                <span>+91 98765 43210</span>
+                <Phone size={16} color="var(--color-gold)" style={{ flexShrink: 0 }} />
+                <span>{BUSINESS_CONFIG.contact.phoneDisplay}</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                <Mail size={16} color="var(--color-gold)" />
-                <span>support@srilakshmisarees.com</span>
+                <Mail size={16} color="var(--color-gold)" style={{ flexShrink: 0 }} />
+                <span>{BUSINESS_CONFIG.contact.isEmailConfirmed && BUSINESS_CONFIG.contact.email ? BUSINESS_CONFIG.contact.email : BUSINESS_CONFIG.contact.emailDisplay}</span>
               </div>
             </div>
           </div>
@@ -110,10 +111,12 @@ export const Footer: React.FC = () => {
           <div>
             <h4 className="footer-heading">Customer Care</h4>
             <ul className="footer-links">
+              <li><Link to="/about">About Us</Link></li>
+              <li><Link to="/contact">Contact Us</Link></li>
               <li><Link to="/track-order">Track Your Order</Link></li>
               <li><Link to="/account">My Account & Orders</Link></li>
               <li><Link to="/policy/shipping">Shipping & Delivery Policy</Link></li>
-              <li><Link to="/policy/returns">Returns & Exchange Request</Link></li>
+              <li><Link to="/policy/returns">Returns & Exchange Policy</Link></li>
               <li><Link to="/policy/cancellation">Cancellation Policy</Link></li>
               <li><Link to="/policy/privacy">Privacy & Data Security</Link></li>
               <li><Link to="/policy/terms">Terms of Service</Link></li>
@@ -124,7 +127,7 @@ export const Footer: React.FC = () => {
           <div>
             <h4 className="footer-heading">Stay Connected</h4>
             <p style={{ color: '#B5B0A6', fontSize: '0.875rem', marginBottom: '1rem' }}>
-              Subscribe to receive exclusive access to new saree weavers' drops and festive discounts.
+              Subscribe to receive exclusive updates on newly curated sarees and festive arrivals.
             </p>
             <form onSubmit={handleNewsletterSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <input
@@ -146,24 +149,30 @@ export const Footer: React.FC = () => {
                 Subscribe Now
               </button>
             </form>
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', color: '#B5B0A6' }}>
-              <a href="https://instagram.com" target="_blank" rel="noreferrer" aria-label="Instagram">
-                <Instagram size={20} />
-              </a>
-              <a href="https://facebook.com" target="_blank" rel="noreferrer" aria-label="Facebook">
-                <Facebook size={20} />
-              </a>
-            </div>
+            {(BUSINESS_CONFIG.social.instagram || BUSINESS_CONFIG.social.facebook) && (
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', color: '#B5B0A6' }}>
+                {BUSINESS_CONFIG.social.instagram && (
+                  <a href={BUSINESS_CONFIG.social.instagram} target="_blank" rel="noreferrer" aria-label="Instagram">
+                    <Instagram size={20} />
+                  </a>
+                )}
+                {BUSINESS_CONFIG.social.facebook && (
+                  <a href={BUSINESS_CONFIG.social.facebook} target="_blank" rel="noreferrer" aria-label="Facebook">
+                    <Facebook size={20} />
+                  </a>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
         {/* Footer Bottom Copyright */}
         <div className="footer-bottom">
           <div>
-            © {new Date().getFullYear()} Sri Lakshmi Sarees. Handcrafted with passion in India.
+            © {new Date().getFullYear()} {BUSINESS_CONFIG.brandName}. Family-run enterprise in India.
           </div>
           <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-            <span>Verified Secure Payments: Razorpay | UPI | Visa | Mastercard | COD</span>
+            <span>Verified Secure Payments: Razorpay | UPI | Net Banking | Cards | COD</span>
           </div>
         </div>
       </div>

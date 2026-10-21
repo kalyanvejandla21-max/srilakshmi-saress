@@ -1,4 +1,5 @@
 import { Product, Order, Coupon, SiteSettings, Announcement } from '../types';
+import { BUSINESS_CONFIG } from '../config/businessConfig';
 
 // Mock Initial Data Seed for catalog (clearly flagged with isDemo: true)
 export const INITIAL_PRODUCTS: Product[] = [
@@ -237,16 +238,16 @@ export const INITIAL_ANNOUNCEMENT: Announcement = {
 };
 
 export const INITIAL_SETTINGS: SiteSettings = {
-  brandName: 'Sri Lakshmi Sarees',
-  tagline: 'Timeless Handwoven Heritage & Pure Silk Elegance',
-  contactEmail: 'support@srilakshmisarees.com',
-  contactPhone: '+91 98765 43210',
-  whatsappNumber: '+91 98765 43210',
-  storeAddress: '108 Silk Weaver Street, Near Temple Tower, Kanchipuram, Tamil Nadu 631501',
-  freeShippingMinAmount: 2999,
-  standardShippingFee: 150,
+  brandName: BUSINESS_CONFIG.brandName,
+  tagline: BUSINESS_CONFIG.tagline,
+  contactEmail: BUSINESS_CONFIG.contact.email || BUSINESS_CONFIG.contact.emailDisplay,
+  contactPhone: BUSINESS_CONFIG.contact.phoneDisplay,
+  whatsappNumber: BUSINESS_CONFIG.contact.whatsappDisplay,
+  storeAddress: BUSINESS_CONFIG.contact.fullAddress,
+  freeShippingMinAmount: BUSINESS_CONFIG.policies.freeShippingThreshold,
+  standardShippingFee: BUSINESS_CONFIG.policies.standardShippingFee,
   codEnabled: true,
-  returnWindowDays: 7
+  returnWindowDays: BUSINESS_CONFIG.policies.returnWindowDays
 };
 
 export const INITIAL_COUPONS: Coupon[] = [
