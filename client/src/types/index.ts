@@ -112,6 +112,10 @@ export interface Order {
   awbNumber?: string;
   trackingUrl?: string;
   shipmentId?: string;
+  cashfreeOrderId?: string;
+  cashfreePaymentId?: string;
+  cashfreePaymentSessionId?: string;
+  cashfreePaymentStatus?: string;
   razorpayOrderId?: string;
   razorpayPaymentId?: string;
   razorpaySignature?: string;

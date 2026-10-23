@@ -4,6 +4,11 @@
  * privacy-preserving tracking, idempotency, and admin authorization.
  */
 
+import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
 const BASE_URL = process.env.TEST_API_URL || 'http://localhost:5000';
 
 async function runTests() {
@@ -12,8 +17,49 @@ async function runTests() {
   console.log(`🎯 Target API: ${BASE_URL}`);
   console.log(`======================================================\n`);
 
+  // Ensure test stock availability in local JSON store if running locally
+  try {
+    const __dirname = path.dirname(fileURLToPath(import.meta.url));
+    const dataFile = path.join(__dirname, 'data/store_db.json');
+    if (fs.existsSync(dataFile)) {
+      const db = JSON.parse(fs.readFileSync(dataFile, 'utf-8'));
+      if (Array.isArray(db.products)) {
+        let changed = false;
+        for (const p of db.products) {
+          if (p.stock < 5) {
+            p.stock = 10;
+            changed = true;
+          }
+        }
+        if (changed) fs.writeFileSync(dataFile, JSON.stringify(db, null, 2));
+      }
+    }
+  } catch {}
+
   let passed = 0;
   let failed = 0;
+
+  // Phase 1: Unit & Provider Error Classification Tests
+  console.log(`[Phase 1/2] Unit & Security Verification Tests`);
+  try {
+    execSync('node test-mailer.js', { stdio: 'inherit' });
+    console.log(`  ✅ PASSED: Mailer unit tests (selection, freemail parsing, error classification)\n`);
+    passed++;
+  } catch (err) {
+    console.error(`  ❌ FAILED: Mailer unit tests failed -> ${err.message}\n`);
+    failed++;
+  }
+
+  try {
+    execSync('node test-cashfree-unit.js', { stdio: 'inherit' });
+    console.log(`  ✅ PASSED: Cashfree unit tests (endpoint routing, signature verification, payload sanitization)\n`);
+    passed++;
+  } catch (err) {
+    console.error(`  ❌ FAILED: Cashfree unit tests failed -> ${err.message}\n`);
+    failed++;
+  }
+
+  console.log(`[Phase 2/2] Backend API Integration Verification`);
 
   async function assertTest(name, fn) {
     try {
@@ -294,6 +340,105 @@ async function runTests() {
       body: JSON.stringify({
         orderNumber: prepaidOrderNumber,
         reason: 'Payment cancelled in modal test'
+      })
+    });
+
+    if (!res.ok) throw new Error(`Status ${res.status}`);
+    const data = await res.json();
+    if (!data.success) throw new Error('Expected success: true');
+  });
+
+  // 14a. Payment Gateway Config: Exposes public gateway status without leaking secret keys
+  await assertTest('GET /api/payments/config exposes public status without leaking secret keys', async () => {
+    const res = await fetch(`${BASE_URL}/api/payments/config`);
+    if (!res.ok) throw new Error(`Status ${res.status}`);
+    const data = await res.json();
+
+    if (!data.cashfree || typeof data.cashfree.configured !== 'boolean') {
+      throw new Error('Missing cashfree status block');
+    }
+    if (!data.razorpay || typeof data.razorpay.configured !== 'boolean') {
+      throw new Error('Missing razorpay status block');
+    }
+
+    const rawString = JSON.stringify(data);
+    if (rawString.includes('CASHFREE_SECRET_KEY') || rawString.includes('RAZORPAY_KEY_SECRET') || rawString.includes('secretKey')) {
+      throw new Error('CRITICAL SECURITY LEAK: Secret keys exposed in /api/payments/config!');
+    }
+  });
+
+  // 14b. Cashfree Order Creation: Validates order reference and handles unconfigured/invalid keys securely
+  await assertTest('POST /api/payments/create-cashfree-order validates order reference and handles gateway status', async () => {
+    const res = await fetch(`${BASE_URL}/api/payments/create-cashfree-order`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderNumber: 'NON_EXISTENT_ORDER' })
+    });
+
+    // Expect 400 (if gateway not configured) or 404 (order not found)
+    if (res.status !== 400 && res.status !== 404) {
+      throw new Error(`Expected 400 or 404, received ${res.status}`);
+    }
+
+    const data = await res.json().catch(() => ({}));
+    const rawString = JSON.stringify(data);
+    if (rawString.includes('CASHFREE_SECRET_KEY') || rawString.includes('secretKey')) {
+      throw new Error('CRITICAL: Cashfree Secret Key leaked in error payload!');
+    }
+  });
+
+  // 14c. Cashfree Payment Verification: Rejects false/unverified payment claims (Enforces server verification)
+  await assertTest('POST /api/payments/verify-cashfree rejects unverified payment claims without authoritative gateway confirmation', async () => {
+    const res = await fetch(`${BASE_URL}/api/payments/verify-cashfree`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orderNumber: prepaidOrderNumber
+      })
+    });
+
+    // In environment without live confirmed payment, must reject confirmation (status 400)
+    if (res.status !== 400) {
+      throw new Error(`Expected 400 Bad Request, received ${res.status}`);
+    }
+
+    const data = await res.json().catch(() => ({}));
+    if (data.success === true) {
+      throw new Error('CRITICAL SECURITY VIOLATION: Claimed payment succeeded without authoritative Cashfree verification!');
+    }
+  });
+
+  // 14d. Cashfree Webhook: Rejects forged or unsigned webhook calls
+  await assertTest('POST /api/payments/cashfree-webhook rejects unsigned or forged webhook payloads', async () => {
+    const res = await fetch(`${BASE_URL}/api/payments/cashfree-webhook`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-webhook-signature': 'fake_forged_base64_signature==',
+        'x-webhook-timestamp': String(Date.now())
+      },
+      body: JSON.stringify({
+        data: {
+          order: { order_id: prepaidOrderNumber },
+          payment: { payment_status: 'SUCCESS', cf_payment_id: 'fake_pay_123' }
+        }
+      })
+    });
+
+    if (res.status !== 400) {
+      throw new Error(`Expected 400 Bad Request for invalid signature, received ${res.status}`);
+    }
+  });
+
+  // 14e. Payment Failure Recording for Cashfree Orders
+  await assertTest('POST /api/payments/record-failure handles cashfree_order_id safely', async () => {
+    const res = await fetch(`${BASE_URL}/api/payments/record-failure`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orderNumber: prepaidOrderNumber,
+        cashfree_order_id: prepaidOrderNumber,
+        reason: 'User dismissed Cashfree checkout popup'
       })
     });
 

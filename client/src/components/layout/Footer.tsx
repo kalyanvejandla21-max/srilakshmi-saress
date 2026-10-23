@@ -184,7 +184,7 @@ export const Footer: React.FC = () => {
             © {new Date().getFullYear()} {BUSINESS_CONFIG.brandName}. Family-run enterprise in India.
           </div>
           <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-            <span>Verified Secure Payments: Razorpay | UPI | Net Banking | Cards | COD</span>
+            <span>Verified Secure Payments: Cashfree | UPI | Net Banking | Cards | COD</span>
           </div>
         </div>
       </div>

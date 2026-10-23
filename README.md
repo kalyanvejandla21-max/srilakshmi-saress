@@ -41,8 +41,11 @@ A luxury Indian ethnic wear and bridal saree e-commerce platform built with Reac
    - `ALLOWED_ORIGINS`: `https://<your-vercel-app>.vercel.app`
    - `CLIENT_URL`: `https://<your-vercel-app>.vercel.app`
    - `MONGODB_URI`: *(Optional: your MongoDB Atlas connection string)*
-   - `RAZORPAY_KEY_ID`: *(Optional: Razorpay key id)*
-   - `RAZORPAY_KEY_SECRET`: *(Optional: Razorpay key secret)*
+   - `CASHFREE_APP_ID`: *(Cashfree Merchant App ID from cashfree.com)*
+   - `CASHFREE_SECRET_KEY`: *(Cashfree Secret Key - strictly server-side)*
+   - `CASHFREE_ENV`: `PRODUCTION` *(or TEST for sandbox testing)*
+   - `RAZORPAY_KEY_ID`: *(Optional fallback: Razorpay key id)*
+   - `RAZORPAY_KEY_SECRET`: *(Optional fallback: Razorpay key secret)*
 5. Click **Deploy Web Service** and note your Render service URL (e.g., `https://sri-lakshmi-sarees-api.onrender.com`).
 
 ### 3. Vercel (Frontend Deployment)

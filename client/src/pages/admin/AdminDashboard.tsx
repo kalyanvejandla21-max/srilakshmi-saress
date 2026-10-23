@@ -882,6 +882,16 @@ export const AdminDashboard: React.FC = () => {
                   <div style={{ fontWeight: 700, color: 'var(--color-maroon)', marginBottom: '0.5rem' }}>Payment Gateway Details</div>
                   <div>Method: <strong>{selectedOrder.paymentMethod}</strong></div>
                   <div>Status: <span style={{ fontWeight: 700, color: selectedOrder.paymentStatus === 'Paid' ? 'var(--color-success)' : 'var(--color-gold-dark)' }}>{selectedOrder.paymentStatus}</span></div>
+                  {selectedOrder.cashfreePaymentId && (
+                    <div style={{ wordBreak: 'break-all', marginTop: '0.25rem' }}>
+                      Cashfree Payment ID: <code>{selectedOrder.cashfreePaymentId}</code>
+                    </div>
+                  )}
+                  {selectedOrder.cashfreeOrderId && (
+                    <div style={{ wordBreak: 'break-all' }}>
+                      Cashfree Order ID: <code>{selectedOrder.cashfreeOrderId}</code>
+                    </div>
+                  )}
                   {selectedOrder.razorpayPaymentId && (
                     <div style={{ wordBreak: 'break-all', marginTop: '0.25rem' }}>
                       Razorpay Payment ID: <code>{selectedOrder.razorpayPaymentId}</code>

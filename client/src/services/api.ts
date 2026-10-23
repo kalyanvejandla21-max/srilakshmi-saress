@@ -590,7 +590,87 @@ export const adminResetDemoCatalogApi = async (): Promise<boolean> => {
   return true;
 };
 
-// --- RAZORPAY PAYMENT INTEGRATION SERVICES ---
+// --- CASHFREE PAYMENT INTEGRATION SERVICES (PRIMARY) ---
+
+export interface PaymentGatewayConfigResponse {
+  cashfree: {
+    configured: boolean;
+    environment: 'sandbox' | 'production';
+    apiVersion: string;
+  };
+  razorpay: {
+    configured: boolean;
+    keyId: string | null;
+  };
+  activeGateway: 'cashfree' | 'razorpay' | 'none';
+}
+
+export const getPaymentConfigApi = async (): Promise<PaymentGatewayConfigResponse> => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/payments/config`);
+    if (!res.ok) throw new Error(`Status ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    return {
+      cashfree: { configured: false, environment: 'sandbox', apiVersion: '2023-08-01' },
+      razorpay: { configured: false, keyId: null },
+      activeGateway: 'none'
+    };
+  }
+};
+
+export interface CreateCashfreeOrderResponse {
+  success: boolean;
+  paymentSessionId: string;
+  orderId: string;
+  cfOrderId?: string;
+  orderNumber: string;
+  amount: number;
+  currency: string;
+  environment: 'sandbox' | 'production';
+}
+
+export const createCashfreeOrderApi = async (orderNumber: string): Promise<CreateCashfreeOrderResponse> => {
+  const response = await fetch(`${API_BASE_URL}/api/payments/create-cashfree-order`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderNumber })
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const err: any = new Error(data.details || data.message || data.error || 'Failed to initialize Cashfree payment');
+    err.code = data.code;
+    throw err;
+  }
+
+  return data;
+};
+
+export const verifyCashfreePaymentApi = async (orderNumber: string): Promise<Order> => {
+  const response = await fetch(`${API_BASE_URL}/api/payments/verify-cashfree`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderNumber })
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.success) {
+    const err: any = new Error(data.message || data.details || 'Cashfree payment verification failed');
+    err.details = data.details;
+    err.paymentStatus = data.paymentStatus;
+    throw err;
+  }
+
+  if (data.order) {
+    saveOrder(data.order);
+    return data.order;
+  }
+
+  throw new Error('Verified order object was not returned by server');
+};
+
+// --- RAZORPAY PAYMENT INTEGRATION SERVICES (SECONDARY / FALLBACK) ---
 
 export interface CreateRazorpayOrderResponse {
   success: boolean;
@@ -647,13 +727,18 @@ export const verifyRazorpayPaymentApi = async (payload: VerifyPaymentPayload): P
 export const recordPaymentFailureApi = async (
   orderNumber: string,
   reason: string,
-  razorpayOrderId?: string
+  gatewayOrderId?: string
 ): Promise<void> => {
   try {
     await fetch(`${API_BASE_URL}/api/payments/record-failure`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orderNumber, reason, razorpay_order_id: razorpayOrderId })
+      body: JSON.stringify({
+        orderNumber,
+        reason,
+        cashfree_order_id: gatewayOrderId,
+        razorpay_order_id: gatewayOrderId
+      })
     });
   } catch (err) {
     console.warn('Could not record payment failure with server:', err);

@@ -24,6 +24,7 @@ import {
   getNotificationEmail,
   getMailerProvider,
   getSenderEmail,
+  parseAddress,
   sendOrderNotificationEmail,
   sendTestNotificationEmail,
 } from './mailer.js';
@@ -226,6 +227,10 @@ const OrderSchema = new mongoose.Schema(
     awbNumber: { type: String, default: '' },
     trackingUrl: { type: String, default: '' },
     shipmentId: { type: String, default: '' },
+    cashfreeOrderId: { type: String, default: null, index: true },
+    cashfreePaymentId: { type: String, default: null, index: true },
+    cashfreePaymentSessionId: { type: String, default: null },
+    cashfreePaymentStatus: { type: String, default: null },
     razorpayOrderId: { type: String, default: null, index: true },
     razorpayPaymentId: { type: String, default: null, index: true },
     razorpaySignature: { type: String, default: null },
@@ -664,6 +669,10 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
       awbNumber: '',
       trackingUrl: '',
       shipmentId: '',
+      cashfreeOrderId: null,
+      cashfreePaymentId: null,
+      cashfreePaymentSessionId: null,
+      cashfreePaymentStatus: null,
       razorpayOrderId: null,
       razorpayPaymentId: null,
       razorpaySignature: null,
@@ -1150,6 +1159,445 @@ app.post('/api/admin/products/reset-demo', authenticateAdmin, async (req, res) =
 // --- PAYMENT & SHIPPING INTEGRATION BOUNDARIES ---
 // ==========================================
 
+// --- CASHFREE PAYMENT GATEWAY HELPER ---
+function getCashfreeConfig() {
+  const appId = process.env.CASHFREE_APP_ID?.trim();
+  const secretKey = process.env.CASHFREE_SECRET_KEY?.trim();
+  const rawEnv = (process.env.CASHFREE_ENV || process.env.CASHFREE_ENVIRONMENT || 'TEST').trim().toUpperCase();
+  const isProduction = rawEnv === 'PRODUCTION' || rawEnv === 'PROD';
+  const apiVersion = process.env.CASHFREE_API_VERSION?.trim() || '2023-08-01';
+
+  const baseUrl = isProduction ? 'https://api.cashfree.com/pg' : 'https://sandbox.cashfree.com/pg';
+  const isConfigured = Boolean(
+    appId &&
+    secretKey &&
+    !appId.includes('placeholder') &&
+    !secretKey.includes('placeholder') &&
+    secretKey !== 'test_cashfree_secret_key'
+  );
+
+  return {
+    appId,
+    secretKey,
+    isProduction,
+    environment: isProduction ? 'production' : 'sandbox',
+    apiVersion,
+    baseUrl,
+    isConfigured,
+  };
+}
+
+// Public Payment Gateway Status (Read-only configuration; strictly no secret keys exposed)
+app.get('/api/payments/config', (req, res) => {
+  const cfConfig = getCashfreeConfig();
+  const rzpKeyId = process.env.RAZORPAY_KEY_ID?.trim();
+  const rzpKeySecret = process.env.RAZORPAY_KEY_SECRET?.trim();
+  const isRzpConfigured = Boolean(
+    rzpKeyId &&
+    rzpKeySecret &&
+    rzpKeySecret !== 'test_razorpay_secret_key' &&
+    !rzpKeyId.includes('placeholder')
+  );
+
+  res.json({
+    cashfree: {
+      configured: cfConfig.isConfigured,
+      environment: cfConfig.environment,
+      apiVersion: cfConfig.apiVersion,
+    },
+    razorpay: {
+      configured: isRzpConfigured,
+      keyId: isRzpConfigured ? rzpKeyId : null,
+    },
+    activeGateway: cfConfig.isConfigured ? 'cashfree' : (isRzpConfigured ? 'razorpay' : 'none'),
+  });
+});
+
+// Cashfree Order Creation Endpoint (Authoritative Server-side creation)
+app.post('/api/payments/create-cashfree-order', orderLimiter, async (req, res) => {
+  try {
+    const { orderNumber } = req.body;
+    if (!orderNumber) {
+      return res.status(400).json({ error: 'orderNumber is required' });
+    }
+
+    const cfConfig = getCashfreeConfig();
+    if (!cfConfig.isConfigured) {
+      return res.status(400).json({
+        success: false,
+        code: 'GATEWAY_NOT_CONFIGURED',
+        message: 'Cashfree payment keys are not configured in the server environment. Please set up merchant credentials on Render.',
+      });
+    }
+
+    let order = null;
+    if (isMongoReady()) {
+      order = await OrderModel.findOne({ orderNumber }).lean();
+    } else {
+      const db = getDbData();
+      order = (db.orders || []).find((o) => o.orderNumber === orderNumber);
+    }
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (order.paymentStatus === 'Paid') {
+      return res.status(400).json({ error: 'Order has already been paid and confirmed' });
+    }
+
+    const finalAmount = Number(order.finalTotal);
+    if (!finalAmount || finalAmount <= 0) {
+      return res.status(400).json({ error: 'Invalid order amount for online payment' });
+    }
+
+    const rawPhone = order.shippingAddress?.phone || '';
+    const cleanPhone = rawPhone.replace(/\D/g, '').slice(-10) || '9999999999';
+    const customerId = `cust_${cleanPhone || order.id || Date.now()}`.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 50);
+    const customerEmail = order.guestEmail || order.shippingAddress?.email || 'customer@srilakshmisarees.com';
+    const customerName = (order.shippingAddress?.fullName || 'Customer').slice(0, 100);
+
+    const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+    const returnUrl = `${clientUrl.replace(/\/$/, '')}/order-confirmation/${order.orderNumber}?order_id={order_id}&orderNumber=${order.orderNumber}`;
+
+    const cfRequestBody = {
+      order_id: order.orderNumber,
+      order_amount: Number(finalAmount.toFixed(2)),
+      order_currency: 'INR',
+      customer_details: {
+        customer_id: customerId,
+        customer_name: customerName,
+        customer_email: customerEmail,
+        customer_phone: cleanPhone,
+      },
+      order_meta: {
+        return_url: returnUrl,
+      },
+      order_note: `Sri Lakshmi Sarees Order #${order.orderNumber}`,
+    };
+
+    const cfResponse = await fetch(`${cfConfig.baseUrl}/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-version': cfConfig.apiVersion,
+        'x-client-id': cfConfig.appId,
+        'x-client-secret': cfConfig.secretKey,
+      },
+      body: JSON.stringify(cfRequestBody),
+    });
+
+    const cfData = await cfResponse.json().catch(() => ({}));
+
+    if (!cfResponse.ok || !cfData.payment_session_id) {
+      const errDetail = cfData.message || cfData.error || `Cashfree order creation failed (${cfResponse.status})`;
+      return res.status(cfResponse.status || 500).json({
+        error: 'Cashfree order creation failed',
+        details: errDetail,
+      });
+    }
+
+    // Persist cashfreeOrderId and cashfreePaymentSessionId in order record
+    const updateFields = {
+      cashfreeOrderId: cfData.order_id || order.orderNumber,
+      cashfreePaymentSessionId: cfData.payment_session_id,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (isMongoReady()) {
+      await OrderModel.updateOne({ orderNumber }, { $set: updateFields });
+    } else {
+      const db = getDbData();
+      const localOrd = (db.orders || []).find((o) => o.orderNumber === orderNumber);
+      if (localOrd) {
+        Object.assign(localOrd, updateFields);
+        saveDbData(db);
+      }
+    }
+
+    // Strictly return session ID and order details to client without exposing secret key
+    res.json({
+      success: true,
+      paymentSessionId: cfData.payment_session_id,
+      orderId: cfData.order_id || order.orderNumber,
+      cfOrderId: cfData.cf_order_id,
+      orderNumber: order.orderNumber,
+      amount: cfData.order_amount,
+      currency: cfData.order_currency,
+      environment: cfConfig.environment,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create Cashfree order', details: error.message });
+  }
+});
+
+// Cashfree Payment Verification Endpoint (Authoritative Server-side Verification)
+app.post('/api/payments/verify-cashfree', async (req, res) => {
+  try {
+    const { orderNumber } = req.body;
+    if (!orderNumber) {
+      return res.status(400).json({ success: false, message: 'orderNumber is required' });
+    }
+
+    const cfConfig = getCashfreeConfig();
+    if (!cfConfig.isConfigured) {
+      return res.status(400).json({
+        success: false,
+        code: 'GATEWAY_NOT_CONFIGURED',
+        message: 'Cashfree payment keys are not configured in the server environment. Please set up merchant credentials on Render.',
+      });
+    }
+
+    let order = null;
+    if (isMongoReady()) {
+      order = await OrderModel.findOne({ orderNumber }).lean();
+    } else {
+      const db = getDbData();
+      order = (db.orders || []).find((o) => o.orderNumber === orderNumber);
+    }
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    if (order.paymentStatus === 'Paid') {
+      return res.json({
+        success: true,
+        message: 'Order has already been verified and paid',
+        order,
+      });
+    }
+
+    const cashfreeOrderId = order.cashfreeOrderId || order.orderNumber;
+
+    // 1. Authoritative query: Fetch payment attempts for this order from Cashfree
+    const paymentsResponse = await fetch(
+      `${cfConfig.baseUrl}/orders/${encodeURIComponent(cashfreeOrderId)}/payments`,
+      {
+        method: 'GET',
+        headers: {
+          'x-api-version': cfConfig.apiVersion,
+          'x-client-id': cfConfig.appId,
+          'x-client-secret': cfConfig.secretKey,
+        },
+      }
+    );
+
+    const paymentsData = await paymentsResponse.json().catch(() => null);
+
+    // 2. Authoritative query: Fetch order entity from Cashfree
+    const orderResponse = await fetch(
+      `${cfConfig.baseUrl}/orders/${encodeURIComponent(cashfreeOrderId)}`,
+      {
+        method: 'GET',
+        headers: {
+          'x-api-version': cfConfig.apiVersion,
+          'x-client-id': cfConfig.appId,
+          'x-client-secret': cfConfig.secretKey,
+        },
+      }
+    );
+    const orderData = await orderResponse.json().catch(() => null);
+
+    let successfulPayment = null;
+    let failedPayment = null;
+
+    if (Array.isArray(paymentsData)) {
+      successfulPayment = paymentsData.find((p) => p.payment_status === 'SUCCESS');
+      failedPayment = paymentsData.find((p) => p.payment_status === 'FAILED' || p.payment_status === 'USER_DROPPED');
+    }
+
+    const isPaidOnCashfree =
+      Boolean(successfulPayment) || (orderData && orderData.order_status === 'PAID');
+
+    if (!isPaidOnCashfree) {
+      const failureReason =
+        (successfulPayment && successfulPayment.payment_message) ||
+        (failedPayment && failedPayment.payment_message) ||
+        (orderData && `Cashfree order status is ${orderData.order_status}`) ||
+        'No successful payment found on Cashfree';
+
+      if (failedPayment || (orderData && (orderData.order_status === 'EXPIRED' || orderData.order_status === 'TERMINATED'))) {
+        const failFields = {
+          paymentStatus: 'Failed',
+          paymentFailureReason: failureReason,
+          updatedAt: new Date().toISOString(),
+        };
+
+        if (isMongoReady()) {
+          await OrderModel.updateOne({ orderNumber }, { $set: failFields });
+        } else {
+          const db = getDbData();
+          const localOrd = (db.orders || []).find((o) => o.orderNumber === orderNumber);
+          if (localOrd) {
+            Object.assign(localOrd, failFields);
+            saveDbData(db);
+          }
+        }
+      }
+
+      return res.status(400).json({
+        success: false,
+        paymentStatus: 'Pending',
+        message: 'Payment verification failed: No successful payment transaction confirmed by Cashfree.',
+        details: failureReason,
+      });
+    }
+
+    // Payment Authoritatively Verified! Update order status to 'Paid' and 'Payment Confirmed'
+    const cfPaymentId = successfulPayment
+      ? String(successfulPayment.cf_payment_id)
+      : String(orderData?.cf_order_id || 'cf_verified');
+
+    const updateFields = {
+      paymentStatus: 'Paid',
+      orderStatus: 'Payment Confirmed',
+      cashfreePaymentId: cfPaymentId,
+      cashfreeOrderId: cashfreeOrderId,
+      cashfreePaymentStatus: 'SUCCESS',
+      paymentFailureReason: null,
+      updatedAt: new Date().toISOString(),
+    };
+
+    let updatedOrder = null;
+    if (isMongoReady()) {
+      updatedOrder = await OrderModel.findOneAndUpdate(
+        { orderNumber },
+        { $set: updateFields },
+        { new: true }
+      ).lean();
+      if (updatedOrder) delete updatedOrder._id;
+    } else {
+      const db = getDbData();
+      const localOrd = (db.orders || []).find((o) => o.orderNumber === orderNumber);
+      if (localOrd) {
+        Object.assign(localOrd, updateFields);
+        saveDbData(db);
+        updatedOrder = localOrd;
+      }
+    }
+
+    // Trigger order confirmation email asynchronously
+    if (updatedOrder && !updatedOrder.emailNotificationSent) {
+      sendOrderNotificationEmail(updatedOrder).then(async (mailResult) => {
+        if (mailResult && mailResult.success) {
+          if (isMongoReady()) {
+            await OrderModel.updateOne(
+              { orderNumber },
+              { $set: { emailNotificationSent: true, emailNotificationSentAt: new Date().toISOString() } }
+            ).catch((e) => console.error('[Cashfree] Failed to update emailNotificationSent:', e.message));
+          } else {
+            const db = getDbData();
+            const localOrd = (db.orders || []).find((o) => o.orderNumber === orderNumber);
+            if (localOrd) {
+              localOrd.emailNotificationSent = true;
+              localOrd.emailNotificationSentAt = new Date().toISOString();
+              saveDbData(db);
+            }
+          }
+        }
+      }).catch((err) => console.error('[Cashfree] Error sending notification email:', err.message));
+    }
+
+    return res.json({
+      success: true,
+      message: 'Payment verified and order confirmed successfully',
+      order: updatedOrder,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to verify Cashfree payment', details: error.message });
+  }
+});
+
+// Cashfree Webhook Endpoint (HMAC SHA-256 Base64 Signature Verification)
+app.post('/api/payments/cashfree-webhook', async (req, res) => {
+  try {
+    const signature = req.headers['x-webhook-signature'];
+    const timestamp = req.headers['x-webhook-timestamp'];
+    const rawBodyBuffer = req.rawBody;
+
+    const cfConfig = getCashfreeConfig();
+    if (!cfConfig.secretKey) {
+      console.warn('[Cashfree Webhook] Secret key not configured, ignoring webhook');
+      return res.status(400).send('Webhook unconfigured');
+    }
+
+    if (!signature || !timestamp || !rawBodyBuffer) {
+      return res.status(400).send('Missing webhook signature, timestamp, or raw payload');
+    }
+
+    const rawBodyString = rawBodyBuffer.toString('utf8');
+    const signaturePayload = `${timestamp}${rawBodyString}`;
+    const expectedSignature = crypto
+      .createHmac('sha256', cfConfig.secretKey)
+      .update(signaturePayload)
+      .digest('base64');
+
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expectedSignature);
+
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+      console.warn('⚠️ Cashfree webhook signature verification failed');
+      return res.status(400).send('Invalid webhook signature');
+    }
+
+    const event = req.body;
+    const orderId = event.data?.order?.order_id;
+    const paymentStatus = event.data?.payment?.payment_status;
+    const cfPaymentId = event.data?.payment?.cf_payment_id;
+
+    if (orderId && paymentStatus === 'SUCCESS') {
+      const updateFields = {
+        paymentStatus: 'Paid',
+        orderStatus: 'Payment Confirmed',
+        cashfreePaymentId: String(cfPaymentId || ''),
+        cashfreeOrderId: orderId,
+        cashfreePaymentStatus: 'SUCCESS',
+        paymentFailureReason: null,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (isMongoReady()) {
+        const existing = await OrderModel.findOne({ orderNumber: orderId }).lean();
+        if (existing && !existing.emailNotificationSent) {
+          const updated = { ...existing, ...updateFields };
+          sendOrderNotificationEmail(updated).then(async (mailResult) => {
+            if (mailResult && mailResult.success) {
+              await OrderModel.updateOne(
+                { orderNumber: orderId },
+                { $set: { emailNotificationSent: true, emailNotificationSentAt: new Date().toISOString() } }
+              ).catch((e) => console.error('[Cashfree Webhook] Failed to update emailNotificationSent:', e.message));
+            }
+          }).catch((err) => console.error('[Cashfree Webhook] Error sending notification email:', err.message));
+        }
+        await OrderModel.updateOne({ orderNumber: orderId }, { $set: updateFields });
+      } else {
+        const db = getDbData();
+        const ord = (db.orders || []).find((o) => o.orderNumber === orderId);
+        if (ord) {
+          if (!ord.emailNotificationSent) {
+            const updated = { ...ord, ...updateFields };
+            sendOrderNotificationEmail(updated).then((mailResult) => {
+              if (mailResult && mailResult.success) {
+                ord.emailNotificationSent = true;
+                ord.emailNotificationSentAt = new Date().toISOString();
+                saveDbData(db);
+              }
+            }).catch((err) => console.error('[Cashfree Webhook] Error sending notification email:', err.message));
+          }
+          Object.assign(ord, updateFields);
+          saveDbData(db);
+        }
+      }
+    }
+
+    return res.status(200).json({ success: true, message: 'Webhook processed successfully' });
+  } catch (error) {
+    console.error('[Cashfree Webhook] Error:', error.message);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
 // Razorpay Order Creation Endpoint (Authoritative Server-side creation)
 app.post('/api/payments/create-razorpay-order', orderLimiter, async (req, res) => {
   try {
@@ -1349,12 +1797,17 @@ app.post('/api/payments/verify-razorpay', async (req, res) => {
 // Record Payment Failure Endpoint
 app.post('/api/payments/record-failure', async (req, res) => {
   try {
-    const { orderNumber, reason, razorpay_order_id } = req.body;
-    if (!orderNumber && !razorpay_order_id) {
-      return res.status(400).json({ error: 'orderNumber or razorpay_order_id is required' });
+    const { orderNumber, reason, razorpay_order_id, cashfree_order_id } = req.body;
+    if (!orderNumber && !razorpay_order_id && !cashfree_order_id) {
+      return res.status(400).json({ error: 'orderNumber, cashfree_order_id, or razorpay_order_id is required' });
     }
 
-    const query = orderNumber ? { orderNumber } : { razorpayOrderId: razorpay_order_id };
+    const query = orderNumber
+      ? { orderNumber }
+      : cashfree_order_id
+      ? { $or: [{ cashfreeOrderId: cashfree_order_id }, { orderNumber: cashfree_order_id }] }
+      : { razorpayOrderId: razorpay_order_id };
+
     const updateFields = {
       paymentStatus: 'Failed',
       paymentFailureReason: reason || 'Customer cancelled payment or transaction declined',
@@ -1366,7 +1819,10 @@ app.post('/api/payments/record-failure', async (req, res) => {
     } else {
       const db = getDbData();
       const ord = (db.orders || []).find(
-        (o) => (orderNumber && o.orderNumber === orderNumber) || o.razorpayOrderId === razorpay_order_id
+        (o) =>
+          (orderNumber && o.orderNumber === orderNumber) ||
+          (cashfree_order_id && (o.cashfreeOrderId === cashfree_order_id || o.orderNumber === cashfree_order_id)) ||
+          (razorpay_order_id && o.razorpayOrderId === razorpay_order_id)
       );
       if (ord) {
         Object.assign(ord, updateFields);
@@ -1611,13 +2067,23 @@ app.get('/api/admin/notifications/status', (req, res) => {
   else if (provider === 'brevo') transportType = 'HTTPS (Brevo REST API - Port 443)';
   else if (provider === 'smtp') transportType = 'Direct SMTP (Nodemailer - Port 587)';
 
+  const sender = getSenderEmail();
+  const notificationEmail = getNotificationEmail();
+  const parsedSender = parseAddress(sender);
+
+  let senderWarning = null;
+  if (provider === 'resend' && parsedSender.isFreemail) {
+    senderWarning = `EMAIL_FROM uses public email domain '@${parsedSender.domain}'. Resend strictly rejects sending from public email domains. Remove EMAIL_FROM in Render settings to use Resend's test sender (onboarding@resend.dev), or set EMAIL_FROM to an address on a verified custom domain.`;
+  }
+
   res.json({
     success: true,
     isConfigured,
     provider,
     transportType,
-    notificationEmail: getNotificationEmail(),
-    sender: getSenderEmail(),
+    notificationEmail,
+    sender,
+    senderWarning,
     smtpHost: provider === 'smtp' ? (process.env.SMTP_HOST || 'smtp.gmail.com') : null,
     smtpPort: provider === 'smtp' ? parseInt(process.env.SMTP_PORT || '587', 10) : null,
     smtpUser: process.env.SMTP_USER ? process.env.SMTP_USER.replace(/(.{2})(.*)(@.*)/, '$1***$3') : null,
@@ -1638,14 +2104,22 @@ app.post('/api/admin/notifications/test-email', authenticateAdmin, async (req, r
         message: `Test order notification delivered to ${result.recipient}!`,
         messageId: result.messageId,
         provider: result.provider,
+        sender: result.sender,
+        recipient: result.recipient,
       });
     } else {
       return res.status(400).json({
         success: false,
         message: 'Failed to deliver test email',
-        details: result.error || result.reason,
+        details: result.providerError && result.providerError !== result.error
+          ? `${result.error} (Provider response: "${result.providerError}")`
+          : (result.error || result.reason),
+        error: result.error,
+        providerError: result.providerError,
         step: result.step,
         provider: result.provider,
+        sender: result.sender,
+        recipient: result.recipient,
       });
     }
   } catch (error) {

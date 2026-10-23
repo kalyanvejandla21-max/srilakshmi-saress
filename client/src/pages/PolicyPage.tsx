@@ -181,7 +181,7 @@ export const PolicyPage: React.FC = () => {
               2. Payment Credentials & Transaction Security
             </h3>
             <p>
-              {BUSINESS_CONFIG.brandName} does <strong>NOT</strong> collect, view, or store your debit/credit card numbers, CVVs, net banking credentials, or UPI PINs on our servers. All financial transactions are securely handled through <strong>256-Bit SSL encrypted Razorpay payment gateway</strong> conforming to strict RBI and PCI-DSS compliance standards.
+              {BUSINESS_CONFIG.brandName} does <strong>NOT</strong> collect, view, or store your debit/credit card numbers, CVVs, net banking credentials, or UPI PINs on our servers. All financial transactions are securely handled through <strong>256-Bit SSL encrypted Cashfree payment gateway</strong> conforming to strict RBI and PCI-DSS compliance standards.
             </p>
           </div>
 

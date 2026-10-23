@@ -144,7 +144,7 @@ export const BUSINESS_CONFIG: BusinessConfig = {
     returnsBadgeTitle: '7-Day Return Window',
     returnsBadgeSubtitle: 'Hassle-free reverse doorstep pickup',
     checkoutBadgeTitle: 'Secure Online Checkout',
-    checkoutBadgeSubtitle: '256-Bit SSL Encrypted Razorpay Payments',
+    checkoutBadgeSubtitle: '256-Bit SSL Encrypted Cashfree Payments',
   },
 
   social: {

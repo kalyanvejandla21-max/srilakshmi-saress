@@ -19,6 +19,16 @@ services:
         sync: false
       - key: MONGODB_URI
         sync: false
+      # Cashfree Payment Gateway Credentials (Primary)
+      - key: CASHFREE_APP_ID
+        sync: false
+      - key: CASHFREE_SECRET_KEY
+        sync: false
+      - key: CASHFREE_ENV
+        value: PRODUCTION
+      - key: CASHFREE_API_VERSION
+        value: "2023-08-01"
+      # Razorpay Payment Gateway Credentials (Secondary / Fallback)
       - key: RAZORPAY_KEY_ID
         sync: false
       - key: RAZORPAY_KEY_SECRET

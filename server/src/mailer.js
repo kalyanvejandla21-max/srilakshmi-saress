@@ -25,12 +25,63 @@ export const getNotificationEmail = () => {
 };
 
 /**
+ * Parse an email address or RFC 5322 string like 'Display Name <user@domain.com>'.
+ * Detects domain and checks whether domain is a public freemail domain.
+ */
+export const parseAddress = (input) => {
+  if (!input || typeof input !== 'string') {
+    return { name: '', email: '', domain: '', isFreemail: false, isResendShared: false, formatted: '' };
+  }
+  let str = input.trim();
+  // Strip accidental outer quotes, e.g. '"Sri Lakshmi Sarees <...>"'
+  if ((str.startsWith('"') && str.endsWith('"')) || (str.startsWith("'") && str.endsWith("'"))) {
+    str = str.slice(1, -1).trim();
+  }
+  const match = str.match(/^(?:(.*)<)?([^<>@\s]+@[^<>@\s]+)>?$/);
+  let name = '';
+  let email = '';
+  if (match) {
+    name = (match[1] || '').trim().replace(/^["']|["']$/g, '');
+    email = match[2].trim().toLowerCase();
+  } else {
+    email = str.toLowerCase();
+  }
+  const domain = email.split('@')[1] || '';
+  const freemailDomains = [
+    'gmail.com',
+    'googlemail.com',
+    'yahoo.com',
+    'yahoo.co.in',
+    'outlook.com',
+    'hotmail.com',
+    'icloud.com',
+    'live.com',
+    'aol.com',
+  ];
+  const isFreemail = freemailDomains.includes(domain);
+  const isResendShared = domain === 'resend.dev';
+  return {
+    name,
+    email,
+    domain,
+    isFreemail,
+    isResendShared,
+    formatted: name ? `"${name}" <${email}>` : email,
+  };
+};
+
+/**
  * Detect active mailer provider based on environment variables.
- * Priority: resend > brevo > smtp > none
+ * Allows explicit override via MAILER_PROVIDER if desired, or defaults to priority: resend > brevo > smtp > none
  *
  * @returns {'resend' | 'brevo' | 'smtp' | 'none'}
  */
 export const getMailerProvider = () => {
+  const explicit = (process.env.MAILER_PROVIDER || process.env.EMAIL_PROVIDER || '').trim().toLowerCase();
+  if (explicit === 'resend' && process.env.RESEND_API_KEY?.trim()) return 'resend';
+  if (explicit === 'brevo' && process.env.BREVO_API_KEY?.trim()) return 'brevo';
+  if (explicit === 'smtp' && process.env.SMTP_USER?.trim() && process.env.SMTP_PASS?.trim()) return 'smtp';
+
   if (process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.trim()) {
     return 'resend';
   }
@@ -57,21 +108,27 @@ export const isMailerConfigured = () => {
 
 /**
  * Resolve the sender address string for the active provider.
+ * Strips accidental outer quotes and provides secure provider-appropriate defaults.
  */
 export const getSenderEmail = () => {
   const provider = getMailerProvider();
+  let rawFrom = (process.env.EMAIL_FROM || '').trim();
+  if ((rawFrom.startsWith('"') && rawFrom.endsWith('"')) || (rawFrom.startsWith("'") && rawFrom.endsWith("'"))) {
+    rawFrom = rawFrom.slice(1, -1).trim();
+  }
+
   if (provider === 'resend') {
-    return (process.env.EMAIL_FROM || 'Sri Lakshmi Sarees <onboarding@resend.dev>').trim();
+    return rawFrom || 'Sri Lakshmi Sarees <onboarding@resend.dev>';
   }
   if (provider === 'brevo') {
     const sender = (process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER || getNotificationEmail()).trim();
-    return process.env.EMAIL_FROM ? process.env.EMAIL_FROM.trim() : `"Sri Lakshmi Sarees" <${sender}>`;
+    return rawFrom || `"Sri Lakshmi Sarees" <${sender}>`;
   }
   if (provider === 'smtp') {
     const user = (process.env.SMTP_USER || 'orders@srilakshmisarees.com').trim();
-    return process.env.EMAIL_FROM ? process.env.EMAIL_FROM.trim() : `"Sri Lakshmi Sarees" <${user}>`;
+    return rawFrom || `"Sri Lakshmi Sarees" <${user}>`;
   }
-  return (process.env.EMAIL_FROM || 'no-reply@srilakshmisarees.com').trim();
+  return rawFrom || 'no-reply@srilakshmisarees.com';
 };
 
 /**
@@ -127,7 +184,8 @@ export const generateOrderEmailContent = (order) => {
   if (isPaid) {
     paymentBadgeColor = '#065f46'; // Green
     paymentBadgeBg = '#d1fae5';
-    paymentStatusText = `Paid & Verified via Gateway${order.razorpayPaymentId ? ` (ID: ${order.razorpayPaymentId})` : ''}`;
+    const txnId = order.cashfreePaymentId || order.razorpayPaymentId || '';
+    paymentStatusText = `Paid & Verified via Gateway${txnId ? ` (ID: ${txnId})` : ''}`;
   }
 
   const items = Array.isArray(order.items) ? order.items : [];
@@ -354,7 +412,7 @@ Please prepare parcel for shipment.
  */
 async function sendViaResend({ recipient, subject, html, text }) {
   const apiKey = (process.env.RESEND_API_KEY || '').trim();
-  const from = (process.env.EMAIL_FROM || 'Sri Lakshmi Sarees <onboarding@resend.dev>').trim();
+  const from = getSenderEmail();
 
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -371,13 +429,26 @@ async function sendViaResend({ recipient, subject, html, text }) {
     }),
   });
 
-  const data = await response.json().catch(() => ({}));
+  let data = {};
+  try {
+    data = await response.json();
+  } catch {
+    data = {};
+  }
 
   if (!response.ok) {
-    const errorMsg = data.message || `Resend API returned HTTP ${response.status}`;
+    const errorMsg =
+      data.message ||
+      (typeof data.error === 'string' ? data.error : data.error?.message) ||
+      `Resend API returned HTTP ${response.status}`;
     const err = new Error(errorMsg);
     err.provider = 'resend';
     err.status = response.status;
+    err.resendName = data.name || data.type;
+    err.resendCode = data.statusCode || response.status;
+    err.from = from;
+    err.recipient = recipient;
+    err.rawResponse = data;
     throw err;
   }
 
@@ -412,13 +483,20 @@ async function sendViaBrevo({ recipient, subject, html, text }) {
     }),
   });
 
-  const data = await response.json().catch(() => ({}));
+  let data = {};
+  try {
+    data = await response.json();
+  } catch {
+    data = {};
+  }
 
   if (!response.ok) {
     const errorMsg = data.message || `Brevo API returned HTTP ${response.status}`;
     const err = new Error(errorMsg);
     err.provider = 'brevo';
     err.status = response.status;
+    err.from = senderEmail;
+    err.recipient = recipient;
     throw err;
   }
 
@@ -456,22 +534,31 @@ async function sendViaSmtp({ recipient, subject, html, text }) {
 
 /**
  * Classify errors safely into actionable diagnostic messages without leaking secrets.
+ * Preserves the actual provider error while providing clear diagnostic context.
  */
-function classifyEmailError(error, provider) {
+export function classifyEmailError(error, provider, context = {}) {
   const msg = error?.message || String(error);
   const code = error?.code || '';
+  const status = error?.status;
+  const from = context.from || getSenderEmail();
+  const recipient = context.recipient || getNotificationEmail();
+  const parsedSender = parseAddress(from);
 
-  // 1. Connection / Port Restrictions (Render SMTP blocks)
+  // 1. Connection / Port Restrictions (Render SMTP blocks or general network timeouts)
   if (
     code === 'ETIMEDOUT' ||
     code === 'ECONNREFUSED' ||
+    code === 'ENOTFOUND' ||
     msg.toLowerCase().includes('timeout') ||
-    msg.toLowerCase().includes('timed out')
+    msg.toLowerCase().includes('timed out') ||
+    msg.toLowerCase().includes('fetch failed')
   ) {
     return {
       step: 'NETWORK_CONNECTION',
       message:
-        'Outbound connection timed out. Cloud hosting environments (like Render) block direct outbound SMTP traffic on ports 587, 465, and 25. To enable delivery, configure an HTTPS transactional provider (set RESEND_API_KEY in Render Environment).',
+        provider === 'smtp'
+          ? 'Outbound SMTP connection timed out. Cloud hosting environments (like Render) block direct outbound SMTP traffic on ports 587, 465, and 25. To enable delivery, configure an HTTPS transactional provider (set RESEND_API_KEY in Render Environment).'
+          : `Outbound HTTPS network connection failed while reaching ${provider} API. Check network connectivity.`,
       raw: msg,
     };
   }
@@ -488,18 +575,71 @@ function classifyEmailError(error, provider) {
 
   // 3. Resend Specific Errors
   if (provider === 'resend') {
-    if (error?.status === 401 || msg.toLowerCase().includes('api key')) {
+    const lower = msg.toLowerCase();
+
+    // 3a. Authentication (401 or invalid key)
+    if (status === 401 || lower.includes('api key') || lower.includes('unauthorized')) {
       return {
         step: 'AUTHENTICATION',
         message: 'Invalid or missing RESEND_API_KEY. Verify the API key in your Render Environment settings.',
         raw: msg,
       };
     }
-    if (error?.status === 403 || msg.toLowerCase().includes('verify') || msg.toLowerCase().includes('domain')) {
+
+    // 3b. Test sender recipient restriction (using onboarding@resend.dev but recipient is not registered Resend account email)
+    if (
+      (parsedSender.isResendShared || lower.includes('testing emails to your own email address') || lower.includes('only send testing')) &&
+      (lower.includes('own email address') || lower.includes('testing emails') || lower.includes('to your own'))
+    ) {
+      return {
+        step: 'TEST_SENDER_RECIPIENT_RESTRICTION',
+        message:
+          `Resend test sender restriction: When sending from '${parsedSender.email}', Resend only permits delivering to the email address registered with your Resend account. To deliver order alerts to '${recipient}', you must either: 1) Register/use the Resend account registered under '${recipient}', or 2) Verify a custom domain in Resend and send from your verified domain.`,
+        raw: msg,
+      };
+    }
+
+    // 3c. Unverified sender domain
+    if (lower.includes('domain is not verified') || lower.includes('not verified') || lower.includes('verify your domain')) {
+      if (parsedSender.isFreemail) {
+        return {
+          step: 'SENDER_DOMAIN_UNVERIFIED',
+          message:
+            `Resend cannot send from public email domains like '@${parsedSender.domain}'. Resend requires sending from either 'onboarding@resend.dev' (for testing to your registered Resend account email) or a custom domain that you own. Remove EMAIL_FROM in Render settings to use 'onboarding@resend.dev', or configure a verified custom domain.`,
+          raw: msg,
+        };
+      }
+      return {
+        step: 'SENDER_DOMAIN_UNVERIFIED',
+        message:
+          `The sender domain '${parsedSender.domain || 'specified in EMAIL_FROM'}' is not verified in Resend. Please add and verify your domain DNS records (SPF, DKIM, DMARC) in the Resend dashboard at https://resend.com/domains.`,
+        raw: msg,
+      };
+    }
+
+    // 3d. Rate limiting or quota
+    if (status === 429 || lower.includes('rate limit') || lower.includes('quota')) {
+      return {
+        step: 'RATE_LIMIT',
+        message: `Resend sending rate limit or quota exceeded: ${msg}`,
+        raw: msg,
+      };
+    }
+
+    // 3e. Other 403 Forbidden
+    if (status === 403) {
       return {
         step: 'DOMAIN_AUTHORIZATION',
-        message:
-          'Resend domain policy restriction: On the free Resend tier without custom domain verification, emails can only be sent from onboarding@resend.dev to the email address registered with your Resend account.',
+        message: `Resend authorization rejected: ${msg}`,
+        raw: msg,
+      };
+    }
+
+    // 3f. Other 422 Validation Error
+    if (status === 422 || lower.includes('validation')) {
+      return {
+        step: 'PAYLOAD_VALIDATION',
+        message: `Resend payload validation error: ${msg}`,
         raw: msg,
       };
     }
@@ -507,10 +647,18 @@ function classifyEmailError(error, provider) {
 
   // 4. Brevo Specific Errors
   if (provider === 'brevo') {
-    if (error?.status === 401 || msg.toLowerCase().includes('key not found') || msg.toLowerCase().includes('unauthorized')) {
+    const lower = msg.toLowerCase();
+    if (status === 401 || lower.includes('key not found') || lower.includes('unauthorized')) {
       return {
         step: 'AUTHENTICATION',
         message: 'Invalid BREVO_API_KEY. Verify the API key in your Render Environment settings.',
+        raw: msg,
+      };
+    }
+    if (status === 400 && (lower.includes('sender') || lower.includes('unverified'))) {
+      return {
+        step: 'SENDER_DOMAIN_UNVERIFIED',
+        message: `Brevo sender not verified: ${msg}. Add and verify your sender email in the Brevo dashboard under Settings > Senders.`,
         raw: msg,
       };
     }
@@ -528,12 +676,13 @@ function classifyEmailError(error, provider) {
  *
  * @param {Object} order - Full order object
  * @param {Object} [options] - Additional options (e.g. triggerSource, recipient)
- * @returns {Promise<{ success: boolean, simulated?: boolean, messageId?: string, provider?: string, error?: string }>}
+ * @returns {Promise<{ success: boolean, simulated?: boolean, messageId?: string, provider?: string, error?: string, providerError?: string, step?: string, recipient?: string, sender?: string, orderNumber?: string }>}
  */
 export const sendOrderNotificationEmail = async (order, options = {}) => {
   const recipient = (options.recipient || getNotificationEmail()).trim();
   const orderNumber = order?.orderNumber || order?.id || 'UNKNOWN';
   const provider = getMailerProvider();
+  const from = getSenderEmail();
 
   if (provider === 'none') {
     console.info(
@@ -544,13 +693,14 @@ export const sendOrderNotificationEmail = async (order, options = {}) => {
       reason: 'MAILER_NOT_CONFIGURED',
       simulated: true,
       recipient,
+      sender: from,
       orderNumber,
     };
   }
 
   try {
     const { subject, html, text } = generateOrderEmailContent(order);
-    console.info(`[Mailer] Dispatching order alert for #${orderNumber} to ${recipient} via [${provider.toUpperCase()}]...`);
+    console.info(`[Mailer] Dispatching order alert for #${orderNumber} to ${recipient} via [${provider.toUpperCase()}] (from: ${from})...`);
 
     let result;
     if (provider === 'resend') {
@@ -566,17 +716,23 @@ export const sendOrderNotificationEmail = async (order, options = {}) => {
       success: true,
       messageId: result.messageId,
       provider,
+      sender: from,
       recipient,
       orderNumber,
     };
   } catch (error) {
-    const classified = classifyEmailError(error, provider);
+    const classified = classifyEmailError(error, provider, { from, recipient });
     console.error(`[Mailer] Failed to send order notification for #${orderNumber} via ${provider}:`, classified.message);
+    if (classified.raw && classified.raw !== classified.message) {
+      console.error(`[Mailer] Provider raw response:`, classified.raw);
+    }
     return {
       success: false,
       error: classified.message,
+      providerError: classified.raw,
       step: classified.step,
       provider,
+      sender: from,
       recipient,
       orderNumber,
     };

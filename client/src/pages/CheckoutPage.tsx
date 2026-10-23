@@ -7,10 +7,27 @@ import { useToast } from '../context/ToastContext';
 import { Order, ShippingAddress } from '../types';
 import {
   createOrderOnServer,
+  createCashfreeOrderApi,
+  verifyCashfreePaymentApi,
   createRazorpayOrderApi,
   verifyRazorpayPaymentApi,
   recordPaymentFailureApi,
 } from '../services/api';
+
+const loadCashfreeScript = (): Promise<boolean> => {
+  return new Promise((resolve) => {
+    if ((window as any).Cashfree) {
+      resolve(true);
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://sdk.cashfree.com/js/v3/cashfree.js';
+    script.async = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+};
 
 const loadRazorpayScript = (): Promise<boolean> => {
   return new Promise((resolve) => {
@@ -134,80 +151,129 @@ export const CheckoutPage: React.FC = () => {
         return;
       }
 
-      // 3. Handle Prepaid Flow via Razorpay
-      const isScriptLoaded = await loadRazorpayScript();
-      if (!isScriptLoaded) {
-        throw new Error('Unable to load secure Razorpay payment modal. Please check your internet connection or choose Cash on Delivery.');
-      }
+      // 3. Handle Prepaid Flow (Cashfree Primary Gateway, Razorpay Fallback)
+      let cfOrderData;
 
-      let rzpOrderData;
       try {
-        rzpOrderData = await createRazorpayOrderApi(createdOrder.orderNumber);
-      } catch (orderErr: any) {
-        if (orderErr.code === 'GATEWAY_NOT_CONFIGURED') {
-          setIsGatewayUnconfigured(true);
-          setPaymentMethod('COD');
-          throw new Error('Online Payment Gateway is currently pending merchant activation. Please switch to Cash on Delivery (COD) to place your order now.');
+        cfOrderData = await createCashfreeOrderApi(createdOrder.orderNumber);
+      } catch (cfErr: any) {
+        if (cfErr.code === 'GATEWAY_NOT_CONFIGURED') {
+          // Cashfree credentials not yet active on server. Check if Razorpay is configured as fallback:
+          try {
+            const rzpOrderData = await createRazorpayOrderApi(createdOrder.orderNumber);
+            const isRzpScriptLoaded = await loadRazorpayScript();
+            if (!isRzpScriptLoaded) {
+              throw new Error('Unable to load payment modal. Please check your internet connection or choose Cash on Delivery.');
+            }
+
+            const options = {
+              key: rzpOrderData.keyId,
+              amount: rzpOrderData.amount,
+              currency: rzpOrderData.currency,
+              name: 'Sri Lakshmi Sarees',
+              description: `Order #${createdOrder.orderNumber} - Handwoven Pure Silk Sarees`,
+              image: '/saree-logo.svg',
+              order_id: rzpOrderData.razorpayOrderId,
+              prefill: {
+                name: address.fullName,
+                email: email || '',
+                contact: cleanPhone,
+              },
+              theme: { color: '#5C061C' },
+              handler: async (response: any) => {
+                try {
+                  setIsSubmitting(true);
+                  const verifiedOrder = await verifyRazorpayPaymentApi({
+                    orderNumber: createdOrder.orderNumber,
+                    razorpay_order_id: response.razorpay_order_id,
+                    razorpay_payment_id: response.razorpay_payment_id,
+                    razorpay_signature: response.razorpay_signature,
+                  });
+                  clearCart();
+                  setIsSubmitting(false);
+                  showToast(`Payment verified! Order #${verifiedOrder.orderNumber} placed successfully!`, 'success');
+                  navigate(`/order-confirmation/${verifiedOrder.orderNumber}`, { state: { order: verifiedOrder } });
+                } catch (verifyErr: any) {
+                  setIsSubmitting(false);
+                  const errText = `Payment verification failed: ${verifyErr.message}. If funds were debited, our team will verify your transaction manually.`;
+                  setSubmitError(errText);
+                  showToast(errText, 'error');
+                }
+              },
+              modal: {
+                ondismiss: () => {
+                  setIsSubmitting(false);
+                  recordPaymentFailureApi(createdOrder.orderNumber, 'Payment modal dismissed by user', rzpOrderData.razorpayOrderId);
+                  showToast(`Payment was cancelled. Order #${createdOrder.orderNumber} is preserved as Pending. You may retry or pay via COD.`, 'info');
+                },
+              },
+            };
+
+            const razorpayInstance = new (window as any).Razorpay(options);
+            razorpayInstance.on('payment.failed', (resp: any) => {
+              setIsSubmitting(false);
+              const reason = resp.error?.description || 'Transaction declined by bank';
+              recordPaymentFailureApi(createdOrder.orderNumber, reason, rzpOrderData.razorpayOrderId);
+              setSubmitError(`Payment failed: ${reason}. Please retry or choose Cash on Delivery.`);
+              showToast(`Payment failed: ${reason}`, 'error');
+            });
+
+            razorpayInstance.open();
+            return;
+          } catch (rzpErr: any) {
+            setIsGatewayUnconfigured(true);
+            setPaymentMethod('COD');
+            throw new Error('Online Payment Gateway is currently pending merchant activation. Please switch to Cash on Delivery (COD) to place your order now.');
+          }
+        } else {
+          throw cfErr;
         }
-        throw orderErr;
       }
 
-      // Launch official Razorpay Checkout modal
-      const options = {
-        key: rzpOrderData.keyId,
-        amount: rzpOrderData.amount,
-        currency: rzpOrderData.currency,
-        name: 'Sri Lakshmi Sarees',
-        description: `Order #${createdOrder.orderNumber} - Handwoven Pure Silk Sarees`,
-        image: '/saree-logo.svg',
-        order_id: rzpOrderData.razorpayOrderId,
-        prefill: {
-          name: address.fullName,
-          email: email || '',
-          contact: cleanPhone,
-        },
-        theme: {
-          color: '#5C061C',
-        },
-        handler: async (response: any) => {
-          try {
-            setIsSubmitting(true);
-            const verifiedOrder = await verifyRazorpayPaymentApi({
-              orderNumber: createdOrder.orderNumber,
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature,
-            });
-            clearCart();
-            setIsSubmitting(false);
-            showToast(`Payment verified! Order #${verifiedOrder.orderNumber} placed successfully!`, 'success');
-            navigate(`/order-confirmation/${verifiedOrder.orderNumber}`, { state: { order: verifiedOrder } });
-          } catch (verifyErr: any) {
-            setIsSubmitting(false);
-            const errText = `Payment verification failed: ${verifyErr.message}. If funds were debited, our team will verify your transaction manually.`;
-            setSubmitError(errText);
-            showToast(errText, 'error');
-          }
-        },
-        modal: {
-          ondismiss: () => {
-            setIsSubmitting(false);
-            recordPaymentFailureApi(createdOrder.orderNumber, 'Payment modal dismissed by user', rzpOrderData.razorpayOrderId);
-            showToast(`Payment was cancelled. Order #${createdOrder.orderNumber} is preserved as Pending. You may retry or pay via COD.`, 'info');
-          },
-        },
-      };
+      // Cashfree Order created successfully! Load Cashfree JS SDK v3
+      const isCfScriptLoaded = await loadCashfreeScript();
+      if (!isCfScriptLoaded) {
+        throw new Error('Unable to load secure Cashfree payment modal. Please check your internet connection or choose Cash on Delivery.');
+      }
 
-      const razorpayInstance = new (window as any).Razorpay(options);
-      razorpayInstance.on('payment.failed', (resp: any) => {
-        setIsSubmitting(false);
-        const reason = resp.error?.description || 'Transaction declined by bank';
-        recordPaymentFailureApi(createdOrder.orderNumber, reason, rzpOrderData.razorpayOrderId);
-        setSubmitError(`Payment failed: ${reason}. Please retry or choose Cash on Delivery.`);
-        showToast(`Payment failed: ${reason}`, 'error');
+      const cashfree = (window as any).Cashfree({
+        mode: cfOrderData.environment === 'production' ? 'production' : 'sandbox',
       });
 
-      razorpayInstance.open();
+      const checkoutOptions = {
+        paymentSessionId: cfOrderData.paymentSessionId,
+        redirectTarget: '_modal',
+      };
+
+      cashfree.checkout(checkoutOptions).then(async (result: any) => {
+        if (result.error) {
+          setIsSubmitting(false);
+          const reason = result.error.message || 'Payment modal dismissed by user';
+          recordPaymentFailureApi(createdOrder.orderNumber, reason, cfOrderData.orderId);
+          showToast(`Payment was cancelled. Order #${createdOrder.orderNumber} is preserved as Pending. You may retry or pay via COD.`, 'info');
+          return;
+        }
+
+        if (result.redirect) {
+          // In cases where modal opens in self window or bank redirects
+          return;
+        }
+
+        // Cashfree checkout completed! Authoritative server verification
+        try {
+          setIsSubmitting(true);
+          const verifiedOrder = await verifyCashfreePaymentApi(createdOrder.orderNumber);
+          clearCart();
+          setIsSubmitting(false);
+          showToast(`Payment verified! Order #${verifiedOrder.orderNumber} placed successfully!`, 'success');
+          navigate(`/order-confirmation/${verifiedOrder.orderNumber}`, { state: { order: verifiedOrder } });
+        } catch (verifyErr: any) {
+          setIsSubmitting(false);
+          const errText = `Payment verification pending: ${verifyErr.message}. If funds were debited, our team will confirm your transaction manually.`;
+          setSubmitError(errText);
+          showToast(errText, 'error');
+        }
+      });
     } catch (err: any) {
       setIsSubmitting(false);
       const errorMsg = err.message || 'We could not securely process your order. Please try again.';
@@ -433,8 +499,8 @@ export const CheckoutPage: React.FC = () => {
                   />
                   <CreditCard size={24} color="var(--color-maroon)" />
                   <div>
-                    <div style={{ fontWeight: 700, color: 'var(--color-maroon)' }}>Prepaid Online Payment (Razorpay / UPI / NetBanking / Cards)</div>
-                    <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Fastest dispatch & 100% Instant Payment Guarantee</div>
+                    <div style={{ fontWeight: 700, color: 'var(--color-maroon)' }}>Prepaid Online Payment (Cashfree / UPI / NetBanking / Cards / Wallets)</div>
+                    <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Fastest dispatch & 100% RBI & PCI-DSS Secure Instant Payment Guarantee</div>
                   </div>
                 </label>
 
