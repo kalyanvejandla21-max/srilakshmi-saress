@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ToastProvider } from './context/ToastContext';
 import { AuthProvider } from './context/AuthContext';
 import { WishlistProvider } from './context/WishlistContext';
@@ -101,17 +102,19 @@ const AppLayout: React.FC = () => {
 
 export const App: React.FC = () => {
   return (
-    <ToastProvider>
-      <AuthProvider>
-        <WishlistProvider>
-          <CartProvider>
-            <BrowserRouter>
-              <AppLayout />
-            </BrowserRouter>
-          </CartProvider>
-        </WishlistProvider>
-      </AuthProvider>
-    </ToastProvider>
+    <ErrorBoundary>
+      <ToastProvider>
+        <AuthProvider>
+          <WishlistProvider>
+            <CartProvider>
+              <BrowserRouter>
+                <AppLayout />
+              </BrowserRouter>
+            </CartProvider>
+          </WishlistProvider>
+        </AuthProvider>
+      </ToastProvider>
+    </ErrorBoundary>
   );
 };
 

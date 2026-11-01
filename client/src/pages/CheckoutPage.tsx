@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ShieldCheck, Truck, CreditCard, Banknote, Lock, ArrowRight, CheckCircle2, AlertCircle, Loader2, RefreshCw } from 'lucide-react';
 import { useCart } from '../context/CartContext';
@@ -12,6 +12,8 @@ import {
   createRazorpayOrderApi,
   verifyRazorpayPaymentApi,
   recordPaymentFailureApi,
+  getPaymentConfigApi,
+  PaymentGatewayConfigResponse,
 } from '../services/api';
 
 const loadCashfreeScript = (): Promise<boolean> => {
@@ -67,7 +69,28 @@ export const CheckoutPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isGatewayUnconfigured, setIsGatewayUnconfigured] = useState(false);
+  const [gatewayConfig, setGatewayConfig] = useState<PaymentGatewayConfigResponse | null>(null);
   const [idempotencyKey] = useState<string>(() => `idemp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`);
+
+  useEffect(() => {
+    let isMounted = true;
+    getPaymentConfigApi()
+      .then((cfg) => {
+        if (isMounted) {
+          setGatewayConfig(cfg);
+          if (
+            !cfg.cashfree.configured &&
+            !cfg.razorpay.configured
+          ) {
+            setIsGatewayUnconfigured(true);
+          }
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   if (cart.length === 0) {
     return (
@@ -157,8 +180,15 @@ export const CheckoutPage: React.FC = () => {
       try {
         cfOrderData = await createCashfreeOrderApi(createdOrder.orderNumber);
       } catch (cfErr: any) {
-        if (cfErr.code === 'GATEWAY_NOT_CONFIGURED') {
-          // Cashfree credentials not yet active on server. Check if Razorpay is configured as fallback:
+        const isGatewayUnavailable =
+          cfErr.code === 'GATEWAY_NOT_CONFIGURED' ||
+          cfErr.code === 'CASHFREE_AUTH_FAILED' ||
+          cfErr.code === 'CASHFREE_ENV_MISMATCH' ||
+          cfErr.code === 'CASHFREE_ORDER_CREATION_FAILED' ||
+          String(cfErr.message).toLowerCase().includes('authentication failed');
+
+        if (isGatewayUnavailable) {
+          // Cashfree credentials not yet active or mismatch on server. Check if Razorpay is configured as fallback:
           try {
             const rzpOrderData = await createRazorpayOrderApi(createdOrder.orderNumber);
             const isRzpScriptLoaded = await loadRazorpayScript();
@@ -223,7 +253,11 @@ export const CheckoutPage: React.FC = () => {
           } catch (rzpErr: any) {
             setIsGatewayUnconfigured(true);
             setPaymentMethod('COD');
-            throw new Error('Online Payment Gateway is currently pending merchant activation. Please switch to Cash on Delivery (COD) to place your order now.');
+            setIsSubmitting(false);
+            const userMsg = 'Online Payment Gateway is currently undergoing verification. We have automatically selected Cash on Delivery (COD) for you so you can complete your order now without interruption.';
+            setSubmitError(userMsg);
+            showToast(userMsg, 'info');
+            return;
           }
         } else {
           throw cfErr;
@@ -276,7 +310,10 @@ export const CheckoutPage: React.FC = () => {
       });
     } catch (err: any) {
       setIsSubmitting(false);
-      const errorMsg = err.message || 'We could not securely process your order. Please try again.';
+      let errorMsg = err.message || 'We could not securely process your order. Please try again.';
+      if (String(errorMsg).toLowerCase().includes('authentication failed')) {
+        errorMsg = 'Online Payment Gateway is currently undergoing verification. Please choose Cash on Delivery (COD) to place your order now, or try again later.';
+      }
       setSubmitError(errorMsg);
       showToast(errorMsg, 'error');
     }
@@ -477,6 +514,20 @@ export const CheckoutPage: React.FC = () => {
               </h3>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {isGatewayUnconfigured && (
+                  <div
+                    style={{
+                      padding: '0.75rem 1rem',
+                      backgroundColor: '#FEF3C7',
+                      color: '#92400E',
+                      borderRadius: 'var(--radius-sm)',
+                      fontSize: '0.8125rem',
+                      border: '1px solid #FCD34D',
+                    }}
+                  >
+                    ⚠️ <strong>Payment Notice:</strong> Online payment gateways are undergoing verification. We have automatically switched payment to <strong>Cash on Delivery (COD)</strong> so your order can be placed right away.
+                  </div>
+                )}
                 <label
                   style={{
                     display: 'flex',

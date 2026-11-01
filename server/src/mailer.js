@@ -819,3 +819,289 @@ export const sendTestNotificationEmail = async (targetEmail) => {
   const result = await sendOrderNotificationEmail(mockOrder, { recipient });
   return result;
 };
+
+/**
+ * Generate luxury-styled HTML and plaintext content for order shipping & tracking notification.
+ *
+ * @param {object} order - Canonical order object with courier and AWB details
+ * @returns {{ subject: string, html: string, text: string }}
+ */
+export const generateShippingEmailContent = (order) => {
+  const orderNumber = order?.orderNumber || order?.id || 'UNKNOWN';
+  const customerName = order?.shippingAddress?.fullName || 'Valued Patron';
+  const customerPhone = order?.shippingAddress?.phone || 'Not provided';
+  const customerEmail = order?.guestEmail || (order?.shippingAddress && order.shippingAddress.email) || 'Not provided';
+  const courierName = order?.courierName || 'Shiprocket Express Partner';
+  const awbNumber = order?.awbNumber || 'Pending Courier Pickup';
+  const trackingUrl = order?.trackingUrl || (order?.awbNumber ? `https://shiprocket.co/tracking/${order.awbNumber}` : 'https://srilakshmi-saress.vercel.app/track-order');
+  const items = Array.isArray(order?.items) ? order.items : [];
+
+  const addressLines = [
+    order?.shippingAddress?.houseNo,
+    order?.shippingAddress?.street,
+    order?.shippingAddress?.locality,
+    order?.shippingAddress?.landmark,
+    order?.shippingAddress?.city,
+    order?.shippingAddress?.state,
+    order?.shippingAddress?.pincode ? `PIN: ${order.shippingAddress.pincode}` : '',
+  ]
+    .filter(Boolean)
+    .join(', ');
+
+  const formatInr = (num) => `₹${Number(num || 0).toLocaleString('en-IN')}`;
+
+  const isCod = order?.paymentMethod === 'COD';
+  const paymentBadgeText = isCod
+    ? `Cash on Delivery (₹${Number(order?.finalTotal || 0).toLocaleString('en-IN')} to be collected upon delivery)`
+    : 'Prepaid (Payment Verified)';
+
+  const itemsHtml = items
+    .map(
+      (item) => `
+        <tr style="border-bottom: 1px solid #F3EDE4;">
+          <td style="padding: 10px 12px; font-size: 13px; color: #1F2937;">
+            <strong>${item.productName || 'Handcrafted Silk Saree'}</strong>
+          </td>
+          <td style="padding: 10px 12px; font-size: 13px; color: #4B5563; text-align: center;">
+            ${item.quantity || 1}
+          </td>
+          <td style="padding: 10px 12px; font-size: 13px; color: #1F2937; text-align: right; font-weight: 500;">
+            ${formatInr(item.price || item.lineTotal)}
+          </td>
+        </tr>
+      `
+    )
+    .join('');
+
+  const itemsText = items
+    .map((item, idx) => `  ${idx + 1}. ${item.productName || 'Handcrafted Silk Saree'} (Qty: ${item.quantity || 1}) - ${formatInr(item.price || item.lineTotal)}`)
+    .join('\n');
+
+  const subject = `📦 Your Sri Lakshmi Sarees Order #${orderNumber} Has Been Dispatched!`;
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #F8F5F0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1F2937; -webkit-font-smoothing: antialiased;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #F8F5F0; padding: 24px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%; background-color: #FFFFFF; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.06); border: 1px solid #EAE3D9;">
+          <!-- Brand Header -->
+          <tr>
+            <td style="background-color: #5C061C; padding: 24px; text-align: center; border-bottom: 3px solid #D4AF37;">
+              <h1 style="margin: 0; color: #FFFFFF; font-size: 22px; font-weight: 700; letter-spacing: 0.5px;">
+                Sri Lakshmi Sarees
+              </h1>
+              <p style="margin: 4px 0 0; color: #F5E6C8; font-size: 13px; letter-spacing: 0.3px;">
+                Handwoven Pure Silk & Traditional Sarees • Shipping Confirmation
+              </p>
+            </td>
+          </tr>
+
+          <!-- Dispatch Announcement Banner -->
+          <tr>
+            <td style="padding: 24px 24px 16px; background-color: #FFFDF9; border-bottom: 1px solid #EFEAE2; text-align: center;">
+              <span style="font-size: 32px; line-height: 1;">🚚</span>
+              <h2 style="margin: 8px 0 4px; font-size: 20px; color: #5C061C; font-weight: 700;">
+                Your Order is on the Way!
+              </h2>
+              <p style="margin: 0; font-size: 14px; color: #4B5563;">
+                Dear <strong>${customerName}</strong>, your handpicked saree parcel has been packed with utmost care and handed over to our courier partner.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Shipment & Tracking Highlight Card -->
+          <tr>
+            <td style="padding: 20px 24px;">
+              <div style="background-color: #FBF9F6; border: 1.5px solid #D4AF37; border-radius: 8px; padding: 18px 20px; text-align: center;">
+                <p style="margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #6B7280; font-weight: 600;">
+                  Courier Partner & AWB Number
+                </p>
+                <h3 style="margin: 0 0 6px; font-size: 18px; color: #5C061C; font-weight: 700;">
+                  ${courierName}
+                </h3>
+                <div style="font-size: 16px; font-family: monospace; font-weight: 700; color: #111827; background-color: #FFFFFF; display: inline-block; padding: 6px 16px; border-radius: 4px; border: 1px dashed #D4AF37; margin-bottom: 14px;">
+                  AWB: ${awbNumber}
+                </div>
+                <div>
+                  <a href="${trackingUrl}" target="_blank" rel="noopener noreferrer" style="background-color: #5C061C; color: #FFFFFF; text-decoration: none; font-size: 14px; font-weight: 600; padding: 10px 24px; border-radius: 6px; display: inline-block; box-shadow: 0 2px 4px rgba(92,6,28,0.2);">
+                    Track Your Shipment Live →
+                  </a>
+                </div>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Order Summary & Items -->
+          <tr>
+            <td style="padding: 8px 24px 16px;">
+              <h3 style="margin: 0 0 12px; font-size: 15px; color: #5C061C; border-bottom: 2px solid #F3EDE4; padding-bottom: 6px;">
+                Shipment Contents (Order #${orderNumber})
+              </h3>
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse;">
+                <thead>
+                  <tr style="background-color: #F9FAFB; border-bottom: 1px solid #E5E7EB; text-align: left;">
+                    <th style="padding: 8px 12px; font-size: 12px; color: #6B7280; text-transform: uppercase;">Item</th>
+                    <th style="padding: 8px 12px; font-size: 12px; color: #6B7280; text-transform: uppercase; text-align: center;">Qty</th>
+                    <th style="padding: 8px 12px; font-size: 12px; color: #6B7280; text-transform: uppercase; text-align: right;">Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${itemsHtml}
+                </tbody>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Destination & Payment Details -->
+          <tr>
+            <td style="padding: 0 24px 20px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 6px; padding: 14px 16px;">
+                <tr>
+                  <td style="padding: 4px 0; font-size: 13px; color: #6B7280; width: 130px;">Payment Terms:</td>
+                  <td style="padding: 4px 0; font-size: 13px; color: #111827; font-weight: 600;">${paymentBadgeText}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 4px 0; font-size: 13px; color: #6B7280;">Destination Address:</td>
+                  <td style="padding: 4px 0; font-size: 13px; color: #1F2937; line-height: 1.4;">${addressLines}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 4px 0; font-size: 13px; color: #6B7280;">Contact Phone:</td>
+                  <td style="padding: 4px 0; font-size: 13px; color: #111827;">${customerPhone}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Delivery Assistance Footer -->
+          <tr>
+            <td style="background-color: #FBF9F6; padding: 16px 24px; border-top: 1px solid #EFEAE2; text-align: center;">
+              <p style="margin: 0; font-size: 12px; color: #4B5563;">
+                Need help with your delivery? Contact our customer support team:
+              </p>
+              <p style="margin: 4px 0 0; font-size: 12px; color: #5C061C; font-weight: 600;">
+                Email: support@srilakshmisarees.com • WhatsApp: +91 94402 36721
+              </p>
+              <p style="margin: 8px 0 0; font-size: 11px; color: #9CA3AF;">
+                Sri Lakshmi Sarees • Official Handwoven Silk Heritage • Kanchipuram Delivery Hub
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+======================================================
+SRI LAKSHMI SAREES - ORDER DISPATCHED!
+======================================================
+
+Dear ${customerName},
+
+Great news! Your Sri Lakshmi Sarees order #${orderNumber} has been dispatched.
+
+COURIER & TRACKING DETAILS:
+- Courier Partner: ${courierName}
+- AWB / Tracking Number: ${awbNumber}
+- Live Tracking Link: ${trackingUrl}
+
+PAYMENT TERMS:
+- ${paymentBadgeText}
+
+DESTINATION ADDRESS:
+- ${addressLines}
+- Contact Phone: ${customerPhone}
+
+ITEMS DISPATCHED:
+${itemsText}
+
+Need assistance? Reach us at support@srilakshmisarees.com or WhatsApp +91 94402 36721.
+Thank you for celebrating handwoven heritage with Sri Lakshmi Sarees!
+======================================================
+  `.trim();
+
+  return { subject, html, text };
+};
+
+/**
+ * Dispatch automated shipping & tracking notification email to the customer.
+ * Safe fallback: never throws unhandled errors if mailer is not configured or network fails.
+ *
+ * @param {object} order - Order document
+ * @param {object} [options] - Optional recipient override
+ */
+export const sendShippingNotificationEmail = async (order, options = {}) => {
+  const recipient = (
+    options.recipient ||
+    order?.guestEmail ||
+    (order?.shippingAddress && order.shippingAddress.email) ||
+    getNotificationEmail()
+  ).trim();
+
+  const orderNumber = order?.orderNumber || order?.id || 'UNKNOWN';
+  const provider = getMailerProvider();
+  const from = getSenderEmail();
+
+  if (provider === 'none') {
+    console.info(
+      `[Mailer] No email provider configured. Shipping notification for order #${orderNumber} (AWB: ${order?.awbNumber || 'None'}) logged safely.`
+    );
+    return {
+      success: false,
+      reason: 'MAILER_NOT_CONFIGURED',
+      simulated: true,
+      recipient,
+      sender: from,
+      orderNumber,
+    };
+  }
+
+  try {
+    const { subject, html, text } = generateShippingEmailContent(order);
+    console.info(`[Mailer] Dispatching shipping alert for #${orderNumber} (AWB: ${order?.awbNumber}) to ${recipient} via [${provider.toUpperCase()}]...`);
+
+    let result;
+    if (provider === 'resend') {
+      result = await sendViaResend({ recipient, subject, html, text });
+    } else if (provider === 'brevo') {
+      result = await sendViaBrevo({ recipient, subject, html, text });
+    } else {
+      result = await sendViaSmtp({ recipient, subject, html, text });
+    }
+
+    console.info(`[Mailer] Shipping alert delivered successfully via ${provider}! MessageID: ${result.messageId}`);
+    return {
+      success: true,
+      messageId: result.messageId,
+      provider,
+      sender: from,
+      recipient,
+      orderNumber,
+    };
+  } catch (error) {
+    const classified = classifyEmailError(error, provider, { from, recipient });
+    console.error(`[Mailer] Failed to send shipping notification for #${orderNumber} via ${provider}:`, classified.message);
+    return {
+      success: false,
+      error: classified.message,
+      providerError: classified.raw,
+      step: classified.step,
+      provider,
+      sender: from,
+      recipient,
+      orderNumber,
+    };
+  }
+};

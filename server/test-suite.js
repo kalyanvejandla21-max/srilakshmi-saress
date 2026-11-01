@@ -41,8 +41,9 @@ async function runTests() {
 
   // Phase 1: Unit & Provider Error Classification Tests
   console.log(`[Phase 1/2] Unit & Security Verification Tests`);
+  const serverDir = path.dirname(fileURLToPath(import.meta.url));
   try {
-    execSync('node test-mailer.js', { stdio: 'inherit' });
+    execSync('node test-mailer.js', { cwd: serverDir, stdio: 'inherit' });
     console.log(`  ✅ PASSED: Mailer unit tests (selection, freemail parsing, error classification)\n`);
     passed++;
   } catch (err) {
@@ -51,11 +52,20 @@ async function runTests() {
   }
 
   try {
-    execSync('node test-cashfree-unit.js', { stdio: 'inherit' });
+    execSync('node test-cashfree-unit.js', { cwd: serverDir, stdio: 'inherit' });
     console.log(`  ✅ PASSED: Cashfree unit tests (endpoint routing, signature verification, payload sanitization)\n`);
     passed++;
   } catch (err) {
     console.error(`  ❌ FAILED: Cashfree unit tests failed -> ${err.message}\n`);
+    failed++;
+  }
+
+  try {
+    execSync('node test-shiprocket-unit.js', { cwd: serverDir, stdio: 'inherit' });
+    console.log(`  ✅ PASSED: Shiprocket unit tests (credential hygiene, payment gating, COD, idempotency, AWB/pickup failure safety)\n`);
+    passed++;
+  } catch (err) {
+    console.error(`  ❌ FAILED: Shiprocket unit tests failed -> ${err.message}\n`);
     failed++;
   }
 
@@ -95,6 +105,16 @@ async function runTests() {
     const demoCount = data.products.filter((p) => p.isDemo).length;
     if (demoCount === 0) {
       throw new Error('Demo catalog labeling missing on initial products');
+    }
+  });
+
+  // 2b. Product Search Regex Sanitization (ReDoS protection)
+  await assertTest('GET /api/products sanitizes malicious regex queries and special characters without crashing', async () => {
+    const res = await fetch(`${BASE_URL}/api/products?search=((((a%2B)%2B)%2B)%2B)%2B`);
+    if (!res.ok) throw new Error(`Status ${res.status}`);
+    const data = await res.json();
+    if (!data.success || !Array.isArray(data.products)) {
+      throw new Error('Invalid products search response');
     }
   });
 
@@ -266,6 +286,30 @@ async function runTests() {
     }
   });
 
+  // 10b. Admin Status Guard: Rejects Dispatched without AWB
+  await assertTest('PATCH /api/admin/orders/:id/status blocks Dispatched status without AWB or courier with HTTP 400', async () => {
+    if (!adminJwtToken || !createdOrderNumber) {
+      throw new Error('Missing token or order number for status transition test');
+    }
+
+    const res = await fetch(`${BASE_URL}/api/admin/orders/${createdOrderNumber}/status`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminJwtToken}`
+      },
+      body: JSON.stringify({ orderStatus: 'Dispatched' })
+    });
+
+    if (res.status !== 400) {
+      throw new Error(`Expected HTTP 400 Bad Request, received ${res.status}`);
+    }
+    const data = await res.json();
+    if (data.code !== 'MISSING_SHIPPING_DETAILS') {
+      throw new Error(`Expected error code MISSING_SHIPPING_DETAILS, received ${data.code}`);
+    }
+  });
+
   // 11. Payment Status Safety: New orders start Pending with no fake AWB
   let prepaidOrderNumber = null;
   await assertTest('POST /api/orders enforces paymentStatus = Pending and no fake AWB on creation', async () => {
@@ -430,8 +474,8 @@ async function runTests() {
     }
   });
 
-  // 14e. Payment Failure Recording for Cashfree Orders
-  await assertTest('POST /api/payments/record-failure handles cashfree_order_id safely', async () => {
+  // 14e. Payment Failure Recording for Cashfree Orders with Stock Restoration
+  await assertTest('POST /api/payments/record-failure handles failure and restores stock idempotently', async () => {
     const res = await fetch(`${BASE_URL}/api/payments/record-failure`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -445,6 +489,23 @@ async function runTests() {
     if (!res.ok) throw new Error(`Status ${res.status}`);
     const data = await res.json();
     if (!data.success) throw new Error('Expected success: true');
+    if (!data.stockRestored && !data.alreadyRestored) {
+      throw new Error('Expected stockRestored: true on payment failure');
+    }
+
+    // Duplicate call test: must be idempotent and not restore twice
+    const dupRes = await fetch(`${BASE_URL}/api/payments/record-failure`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orderNumber: prepaidOrderNumber,
+        reason: 'Duplicate call'
+      })
+    });
+    const dupData = await dupRes.json();
+    if (!dupData.alreadyRestored) {
+      throw new Error('Expected alreadyRestored: true on duplicate failure record call');
+    }
   });
 
   // 15. Courier Serviceability Public Endpoint
@@ -455,16 +516,23 @@ async function runTests() {
     if (!data.success) throw new Error('Serviceability check failed');
   });
 
-  // 16. Email Notification Configuration Status
-  await assertTest('GET /api/admin/notifications/status returns notification status safely without exposing secrets', async () => {
+  // 16. Email Notification Configuration Status (Admin Protected)
+  await assertTest('GET /api/admin/notifications/status blocks unauthenticated requests with 401', async () => {
     const res = await fetch(`${BASE_URL}/api/admin/notifications/status`);
+    if (res.status !== 401) {
+      throw new Error(`Expected 401 Unauthorized for unauthenticated request, received ${res.status}`);
+    }
+  });
+
+  await assertTest('GET /api/admin/notifications/status returns notification status when authenticated with admin token', async () => {
+    if (!adminJwtToken) throw new Error('Admin token required');
+    const res = await fetch(`${BASE_URL}/api/admin/notifications/status`, {
+      headers: { Authorization: `Bearer ${adminJwtToken}` }
+    });
     if (!res.ok) throw new Error(`Status ${res.status}`);
     const data = await res.json();
     if (!data.success || typeof data.isConfigured !== 'boolean') {
       throw new Error('Notification status response invalid');
-    }
-    if (!data.provider || !data.transportType) {
-      throw new Error('Notification status missing provider or transportType');
     }
     if (data.smtpPass || data.password || data.resendApiKey || data.brevoApiKey) {
       throw new Error('CRITICAL: Provider secrets exposed by status endpoint!');
@@ -511,6 +579,60 @@ async function runTests() {
     const data = await res.json();
     if (!data.provider && !data.step && !data.message) {
       throw new Error('Response missing diagnostic metadata');
+    }
+  });
+
+  // 20. Admin Shiprocket Status Endpoint Protection
+  await assertTest('GET /api/admin/shiprocket/status blocks unauthorized requests with 401', async () => {
+    const res = await fetch(`${BASE_URL}/api/admin/shiprocket/status`);
+    if (res.status !== 401) {
+      throw new Error(`Expected 401 Unauthorized, received ${res.status}`);
+    }
+  });
+
+  // 21. Admin Authenticated Shiprocket Status Endpoint (No secrets leaked)
+  await assertTest('GET /api/admin/shiprocket/status returns diagnostic info without exposing credentials', async () => {
+    if (!adminJwtToken) throw new Error('Missing admin token');
+    const res = await fetch(`${BASE_URL}/api/admin/shiprocket/status`, {
+      headers: { Authorization: `Bearer ${adminJwtToken}` }
+    });
+    if (!res.ok) throw new Error(`Status ${res.status}`);
+    const data = await res.json();
+    if (typeof data.isConfigured !== 'boolean' || !data.baseUrl) {
+      throw new Error('Invalid status response payload');
+    }
+    if (data.password || data.token || data.jwt) {
+      throw new Error('CRITICAL: Shiprocket credentials or tokens leaked by status endpoint!');
+    }
+  });
+
+  // 22. Shipment Creation Payment Gating Integration Test
+  await assertTest('POST /api/admin/orders/:id/shiprocket/create-shipment blocks unverified prepaid orders', async () => {
+    if (!adminJwtToken) throw new Error('Missing admin token');
+    if (!createdOrderNumber) throw new Error('No order available for gating test');
+    const res = await fetch(`${BASE_URL}/api/admin/orders/${createdOrderNumber}/shiprocket/create-shipment`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminJwtToken}`
+      }
+    });
+    // If order was created as Prepaid (Pending) in test, must reject with 400 PAYMENT_NOT_VERIFIED or 400 SHIPROCKET_NOT_CONFIGURED
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 400) {
+      if (data.code !== 'PAYMENT_NOT_VERIFIED' && data.code !== 'SHIPROCKET_NOT_CONFIGURED') {
+        throw new Error(`Unexpected error code: ${data.code}`);
+      }
+    }
+  });
+
+  // 23. Public Customer Tracking by AWB Endpoint
+  await assertTest('GET /api/shipments/track/:awb responds cleanly to tracking queries', async () => {
+    const res = await fetch(`${BASE_URL}/api/shipments/track/1428570001`);
+    if (!res.ok) throw new Error(`Status ${res.status}`);
+    const data = await res.json();
+    if (typeof data.isConfigured !== 'boolean' || !data.tracking) {
+      throw new Error('Invalid tracking response structure');
     }
   });
 

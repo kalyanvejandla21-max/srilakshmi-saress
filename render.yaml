@@ -33,6 +33,15 @@ services:
         sync: false
       - key: RAZORPAY_KEY_SECRET
         sync: false
+      # Shiprocket Official Courier Integration
+      - key: SHIPROCKET_EMAIL
+        sync: false
+      - key: SHIPROCKET_PASSWORD
+        sync: false
+      - key: SHIPROCKET_PICKUP_LOCATION
+        value: "Primary"
+      - key: SHIPROCKET_PICKUP_PINCODE
+        value: "521125"
       # Email Notification Providers (Resend recommended for Render HTTPS)
       - key: RESEND_API_KEY
         sync: false

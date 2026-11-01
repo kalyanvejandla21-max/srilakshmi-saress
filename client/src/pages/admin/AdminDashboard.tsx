@@ -18,7 +18,10 @@ import {
   X,
   ExternalLink,
   FileText,
-  ChevronRight
+  ChevronRight,
+  RefreshCw,
+  Clock,
+  ShieldCheck,
 } from 'lucide-react';
 import { Product, Order, OrderStatus, SareeCategory } from '../../types';
 import {
@@ -29,7 +32,11 @@ import {
   adminUpdateProductApi,
   adminArchiveProductApi,
   adminResetDemoCatalogApi,
+  adminCreateShipmentApi,
+  adminAssignAwbApi,
+  adminBookPickupApi,
   adminDispatchShiprocketApi,
+  adminTrackShipmentApi,
   getStoredCoupons
 } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
@@ -52,6 +59,9 @@ export const AdminDashboard: React.FC = () => {
   // Order Details & Dispatch Modal state
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isDispatching, setIsDispatching] = useState(false);
+  const [activeShipAction, setActiveShipAction] = useState<'all' | 'shipment' | 'awb' | 'pickup' | null>(null);
+  const [isTrackingLive, setIsTrackingLive] = useState(false);
+  const [liveTrackingInfo, setLiveTrackingInfo] = useState<any | null>(null);
   const [manualCourier, setManualCourier] = useState('');
   const [manualAwb, setManualAwb] = useState('');
   const [manualTrackingUrl, setManualTrackingUrl] = useState('');
@@ -137,10 +147,13 @@ export const AdminDashboard: React.FC = () => {
     setManualAwb(ord.awbNumber || '');
     setManualTrackingUrl(ord.trackingUrl || '');
     setManualPaymentStatus(ord.paymentStatus || 'Pending');
+    setLiveTrackingInfo(null);
   };
 
+  // 1-Click Complete Dispatch via Shiprocket Pipeline
   const handleShiprocketDispatch = async (orderId: string) => {
     setIsDispatching(true);
+    setActiveShipAction('all');
     try {
       const res = await adminDispatchShiprocketApi(orderId);
       setOrders((prev) => prev.map((o) => (o.id === orderId || o.orderNumber === orderId ? res.order : o)));
@@ -148,11 +161,82 @@ export const AdminDashboard: React.FC = () => {
       setManualCourier(res.order.courierName || '');
       setManualAwb(res.order.awbNumber || '');
       setManualTrackingUrl(res.order.trackingUrl || '');
-      showToast(`Shipment registered with Shiprocket! AWB: ${res.order.awbNumber || 'Pending Courier Pickup'}`, 'success');
+      if (res.partial) {
+        showToast(res.message || 'Shipment created, but AWB or pickup pending.', 'info');
+      } else {
+        showToast(`Shipment processed! AWB: ${res.order.awbNumber || 'Assigned'} • Pickup: ${res.order.pickupStatus || 'Scheduled'}`, 'success');
+      }
     } catch (err: any) {
-      showToast(err.message || 'Shiprocket dispatch failed. Please check credentials on Render or use manual dispatch.', 'error');
+      showToast(err.message || 'Shiprocket dispatch failed. Please verify credentials on Render.', 'error');
     } finally {
       setIsDispatching(false);
+      setActiveShipAction(null);
+    }
+  };
+
+  // Step 1: Create Shipment in Shiprocket
+  const handleCreateShipment = async (orderId: string) => {
+    setActiveShipAction('shipment');
+    try {
+      const res = await adminCreateShipmentApi(orderId);
+      setOrders((prev) => prev.map((o) => (o.id === orderId || o.orderNumber === orderId ? res.order : o)));
+      setSelectedOrder(res.order);
+      showToast(`Shiprocket shipment created! ID: ${res.order.shipmentId}`, 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to create Shiprocket shipment', 'error');
+    } finally {
+      setActiveShipAction(null);
+    }
+  };
+
+  // Step 2: Assign AWB to Shipment
+  const handleAssignAwb = async (orderId: string) => {
+    setActiveShipAction('awb');
+    try {
+      const res = await adminAssignAwbApi(orderId);
+      setOrders((prev) => prev.map((o) => (o.id === orderId || o.orderNumber === orderId ? res.order : o)));
+      setSelectedOrder(res.order);
+      setManualCourier(res.order.courierName || '');
+      setManualAwb(res.order.awbNumber || '');
+      setManualTrackingUrl(res.order.trackingUrl || '');
+      showToast(`AWB assigned: ${res.order.awbNumber} (${res.order.courierName})`, 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to assign AWB in Shiprocket', 'error');
+    } finally {
+      setActiveShipAction(null);
+    }
+  };
+
+  // Step 3: Schedule Courier Pickup
+  const handleBookPickup = async (orderId: string) => {
+    setActiveShipAction('pickup');
+    try {
+      const res = await adminBookPickupApi(orderId);
+      setOrders((prev) => prev.map((o) => (o.id === orderId || o.orderNumber === orderId ? res.order : o)));
+      setSelectedOrder(res.order);
+      showToast(`Courier pickup scheduled! Token: ${res.order.pickupTokenNumber || 'Confirmed'}`, 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to book courier pickup', 'error');
+    } finally {
+      setActiveShipAction(null);
+    }
+  };
+
+  // Live Tracking Sync & Query
+  const handleTrackLive = async (orderId: string) => {
+    setIsTrackingLive(true);
+    try {
+      const res = await adminTrackShipmentApi(orderId);
+      setLiveTrackingInfo(res.tracking);
+      if (res.order) {
+        setOrders((prev) => prev.map((o) => (o.id === orderId || o.orderNumber === orderId ? res.order : o)));
+        setSelectedOrder(res.order);
+      }
+      showToast(`Live status: ${res.tracking?.currentStatus || 'Sync complete'}`, 'info');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to query live tracking from Shiprocket', 'error');
+    } finally {
+      setIsTrackingLive(false);
     }
   };
 
@@ -912,23 +996,170 @@ export const AdminDashboard: React.FC = () => {
 
               {/* Courier Fulfillment Section */}
               <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '1.5rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <h4 style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--color-maroon)', margin: 0 }}>
-                    Shipping & Courier Dispatch
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <h4 style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--color-maroon)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Truck size={16} /> Official Shiprocket Fulfillment
                   </h4>
-                  <button
-                    type="button"
-                    onClick={() => handleShiprocketDispatch(selectedOrder.id || selectedOrder.orderNumber)}
-                    disabled={isDispatching}
-                    className="btn-primary"
-                    style={{ fontSize: '0.8125rem', padding: '0.5rem 1rem' }}
-                  >
-                    {isDispatching ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
-                    {isDispatching ? 'Contacting Shiprocket...' : 'Ship with Shiprocket API'}
-                  </button>
+                  {selectedOrder.awbNumber && (
+                    <button
+                      type="button"
+                      onClick={() => handleTrackLive(selectedOrder.id || selectedOrder.orderNumber)}
+                      disabled={isTrackingLive}
+                      className="btn-secondary"
+                      style={{ fontSize: '0.75rem', padding: '0.35rem 0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                    >
+                      {isTrackingLive ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                      Track Live via Shiprocket
+                    </button>
+                  )}
                 </div>
 
-                {/* Manual Tracking & Status Form */}
+                {/* Payment Gating & COD Notice Banners */}
+                {selectedOrder.paymentMethod === 'Prepaid' ? (
+                  selectedOrder.paymentStatus === 'Paid' ? (
+                    <div style={{ backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', padding: '0.625rem 0.875rem', borderRadius: '4px', marginBottom: '1rem', fontSize: '0.8125rem', color: '#065F46', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <CheckCircle2 size={16} />
+                      <span><strong>Payment Verified:</strong> Full online payment of ₹{(selectedOrder.finalTotal || 0).toLocaleString('en-IN')} confirmed. Authorized for official Shiprocket shipment creation.</span>
+                    </div>
+                  ) : (
+                    <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', padding: '0.625rem 0.875rem', borderRadius: '4px', marginBottom: '1rem', fontSize: '0.8125rem', color: '#991B1B', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <AlertTriangle size={16} />
+                      <span><strong>Prepaid Payment Pending:</strong> Shiprocket automated shipping is protected and blocked until payment verification succeeds. Verify payment status before proceeding.</span>
+                    </div>
+                  )
+                ) : (
+                  <div style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', padding: '0.625rem 0.875rem', borderRadius: '4px', marginBottom: '1rem', fontSize: '0.8125rem', color: '#92400E', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <ShieldCheck size={16} />
+                    <span><strong>Cash on Delivery (COD) Order:</strong> Collect ₹{(selectedOrder.finalTotal || 0).toLocaleString('en-IN')} from recipient upon delivery. Payment status remains Pending until delivered.</span>
+                  </div>
+                )}
+
+                {/* Shiprocket Fulfillment Metadata Card */}
+                <div style={{ backgroundColor: 'var(--bg-primary)', padding: '0.875rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', marginBottom: '1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', fontSize: '0.8125rem' }}>
+                  <div>
+                    <span style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>Shipment ID:</span>
+                    <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>
+                      {selectedOrder.shipmentId || <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>Not Created</span>}
+                    </div>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>AWB Number:</span>
+                    <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>
+                      {selectedOrder.awbNumber ? (
+                        <a
+                          href={selectedOrder.trackingUrl || `https://shiprocket.co/tracking/${selectedOrder.awbNumber}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: 'var(--color-maroon)', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
+                        >
+                          {selectedOrder.awbNumber} <ExternalLink size={12} />
+                        </a>
+                      ) : (
+                        <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>Pending AWB</span>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>Courier Partner:</span>
+                    <div style={{ fontWeight: 600 }}>
+                      {selectedOrder.courierName || <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>Not Assigned</span>}
+                    </div>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>Pickup Status:</span>
+                    <div style={{ fontWeight: 600, color: selectedOrder.pickupStatus === 'SCHEDULED' ? '#059669' : 'inherit' }}>
+                      {selectedOrder.pickupStatus === 'SCHEDULED'
+                        ? `Scheduled (${selectedOrder.pickupTokenNumber ? `Token: ${selectedOrder.pickupTokenNumber}` : 'Confirmed'})`
+                        : <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>Not Scheduled</span>}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Shiprocket Automated Action Controls */}
+                <div style={{ marginBottom: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    {/* 1-Click Complete Dispatch */}
+                    <button
+                      type="button"
+                      onClick={() => handleShiprocketDispatch(selectedOrder.id || selectedOrder.orderNumber)}
+                      disabled={isDispatching || (selectedOrder.paymentMethod === 'Prepaid' && selectedOrder.paymentStatus !== 'Paid')}
+                      className="btn-primary"
+                      style={{ fontSize: '0.8125rem', padding: '0.5rem 1rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                      title={selectedOrder.paymentMethod === 'Prepaid' && selectedOrder.paymentStatus !== 'Paid' ? 'Payment must be verified first' : ''}
+                    >
+                      {activeShipAction === 'all' ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
+                      {activeShipAction === 'all' ? 'Processing Dispatch...' : '1-Click Dispatch via Shiprocket'}
+                    </button>
+
+                    {/* Step 1: Create Shipment */}
+                    {!selectedOrder.shipmentId && (
+                      <button
+                        type="button"
+                        onClick={() => handleCreateShipment(selectedOrder.id || selectedOrder.orderNumber)}
+                        disabled={Boolean(activeShipAction) || (selectedOrder.paymentMethod === 'Prepaid' && selectedOrder.paymentStatus !== 'Paid')}
+                        className="btn-secondary"
+                        style={{ fontSize: '0.8125rem', padding: '0.5rem 0.875rem' }}
+                      >
+                        {activeShipAction === 'shipment' ? <Loader2 size={14} className="animate-spin" /> : '1. Create Shipment'}
+                      </button>
+                    )}
+
+                    {/* Step 2: Assign AWB */}
+                    {selectedOrder.shipmentId && !selectedOrder.awbNumber && (
+                      <button
+                        type="button"
+                        onClick={() => handleAssignAwb(selectedOrder.id || selectedOrder.orderNumber)}
+                        disabled={Boolean(activeShipAction)}
+                        className="btn-secondary"
+                        style={{ fontSize: '0.8125rem', padding: '0.5rem 0.875rem' }}
+                      >
+                        {activeShipAction === 'awb' ? <Loader2 size={14} className="animate-spin" /> : '2. Assign AWB'}
+                      </button>
+                    )}
+
+                    {/* Step 3: Book Pickup */}
+                    {selectedOrder.shipmentId && selectedOrder.awbNumber && selectedOrder.pickupStatus !== 'SCHEDULED' && (
+                      <button
+                        type="button"
+                        onClick={() => handleBookPickup(selectedOrder.id || selectedOrder.orderNumber)}
+                        disabled={Boolean(activeShipAction)}
+                        className="btn-secondary"
+                        style={{ fontSize: '0.8125rem', padding: '0.5rem 0.875rem' }}
+                      >
+                        {activeShipAction === 'pickup' ? <Loader2 size={14} className="animate-spin" /> : '3. Book Pickup'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Live Tracking Result View */}
+                {liveTrackingInfo && (
+                  <div style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0', padding: '0.875rem', borderRadius: '4px', marginBottom: '1rem', fontSize: '0.8125rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <strong style={{ color: '#166534' }}>Live Shiprocket Tracking Status: {liveTrackingInfo.currentStatus}</strong>
+                      <span style={{ fontSize: '0.75rem', color: '#15803D' }}>AWB: {liveTrackingInfo.awbCode}</span>
+                    </div>
+                    {liveTrackingInfo.edd && (
+                      <div style={{ fontSize: '0.75rem', color: '#15803D', marginBottom: '0.5rem' }}>
+                        Estimated Delivery: {liveTrackingInfo.edd}
+                      </div>
+                    )}
+                    {Array.isArray(liveTrackingInfo.activities) && liveTrackingInfo.activities.length > 0 && (
+                      <div style={{ borderTop: '1px solid #DCFCE7', paddingTop: '0.5rem', maxHeight: '120px', overflowY: 'auto' }}>
+                        {liveTrackingInfo.activities.map((act: any, idx: number) => (
+                          <div key={idx} style={{ fontSize: '0.75rem', color: '#374151', padding: '0.2rem 0' }}>
+                            <span style={{ color: '#6B7280' }}>{act.date}:</span> {act.activity} {act.location ? `(${act.location})` : ''}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Manual Courier Override Form */}
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: '0.5rem' }}>
+                  Manual Courier Override (For non-Shiprocket local consignments):
+                </div>
                 <form onSubmit={handleSaveManualDispatch} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', backgroundColor: 'var(--bg-primary)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label" style={{ fontSize: '0.75rem' }}>Courier Partner Name</label>

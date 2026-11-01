@@ -220,7 +220,20 @@ export const TrackOrderPage: React.FC = () => {
 
                   <div>
                     <strong style={{ color: 'var(--color-maroon)' }}>Tracking / AWB Number:</strong>
-                    <div>{foundOrder.awbNumber || 'Assigning AWB...'}</div>
+                    <div>
+                      {foundOrder.awbNumber ? (
+                        <a
+                          href={foundOrder.trackingUrl || `https://shiprocket.co/tracking/${foundOrder.awbNumber}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: 'var(--color-maroon)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.25rem', textDecoration: 'underline' }}
+                        >
+                          {foundOrder.awbNumber} <ExternalLink size={12} />
+                        </a>
+                      ) : (
+                        <span>Assigning AWB...</span>
+                      )}
+                    </div>
                   </div>
 
                   <div>

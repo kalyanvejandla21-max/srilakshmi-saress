@@ -12,12 +12,14 @@ import bcrypt from 'bcryptjs';
 import { INITIAL_PRODUCTS, INITIAL_COUPONS, INITIAL_ANNOUNCEMENT } from './seedData.js';
 import {
   isShiprocketConfigured,
+  getShiprocketConfig,
   getPickupLocations,
   checkCourierServiceability,
   createShiprocketOrder,
   assignAwbToShipment,
   scheduleCourierPickup,
   trackAwbNumber,
+  generateShippingLabel,
 } from './shiprocket.js';
 import {
   isMailerConfigured,
@@ -26,6 +28,8 @@ import {
   getSenderEmail,
   parseAddress,
   sendOrderNotificationEmail,
+  sendShippingNotificationEmail,
+  generateShippingEmailContent,
   sendTestNotificationEmail,
 } from './mailer.js';
 
@@ -226,7 +230,13 @@ const OrderSchema = new mongoose.Schema(
     courierName: { type: String, default: '' },
     awbNumber: { type: String, default: '' },
     trackingUrl: { type: String, default: '' },
-    shipmentId: { type: String, default: '' },
+    shipmentId: { type: String, default: '', index: true },
+    shiprocketOrderId: { type: String, default: '', index: true },
+    shipmentStatus: { type: String, default: '' },
+    pickupTokenNumber: { type: String, default: '' },
+    pickupScheduledDate: { type: String, default: '' },
+    pickupStatus: { type: String, default: '' },
+    shippingLabelUrl: { type: String, default: '' },
     cashfreeOrderId: { type: String, default: null, index: true },
     cashfreePaymentId: { type: String, default: null, index: true },
     cashfreePaymentSessionId: { type: String, default: null },
@@ -238,6 +248,10 @@ const OrderSchema = new mongoose.Schema(
     idempotencyKey: { type: String, default: null, index: true },
     emailNotificationSent: { type: Boolean, default: false },
     emailNotificationSentAt: { type: String, default: null },
+    shippingEmailSent: { type: Boolean, default: false },
+    shippingEmailSentAt: { type: String, default: null },
+    stockRestored: { type: Boolean, default: false },
+    stockRestoredAt: { type: String, default: null },
     createdAt: { type: String, default: () => new Date().toISOString() },
     updatedAt: { type: String, default: () => new Date().toISOString() },
   },
@@ -337,6 +351,158 @@ const generateUniqueOrderNumber = async () => {
   return `SLS-${Math.floor(100000 + Math.random() * 900000)}-${Date.now().toString().slice(-4)}`;
 };
 
+/**
+ * Escape regular expression metacharacters to prevent ReDoS and regex syntax errors
+ */
+export const escapeRegex = (str) => {
+  if (!str || typeof str !== 'string') return '';
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
+/**
+ * Restores product inventory stock for an order when payment has failed, cancelled, or dropped.
+ * Guarantees strict idempotency:
+ * - Never restores an order already marked stockRestored = true (preventing double restoration).
+ * - Never restores stock if the order was confirmed and Paid.
+ * - Prevents negative stock counts.
+ *
+ * @param {Object} order - Order document/object
+ * @returns {Promise<{ success: boolean, alreadyRestored?: boolean, cannotRestore?: boolean, reason?: string, restoredItems: Array }>}
+ */
+export const restoreOrderInventoryStock = async (order) => {
+  if (!order) {
+    return { success: false, reason: 'No order provided' };
+  }
+
+  // 1. Never restore inventory if the order is confirmed as Paid
+  if (order.paymentStatus === 'Paid') {
+    return {
+      success: false,
+      cannotRestore: true,
+      reason: 'Cannot restore inventory for an order that is already confirmed and Paid',
+    };
+  }
+
+  // 2. Idempotency guard: if stock was already restored, exit safely without duplicating increments
+  if (order.stockRestored === true) {
+    return {
+      success: true,
+      alreadyRestored: true,
+      orderNumber: order.orderNumber,
+      message: 'Stock was already restored for this order previously',
+      restoredItems: [],
+    };
+  }
+
+  const items = Array.isArray(order.items) ? order.items : [];
+  const restoredItems = [];
+
+  if (isMongoReady()) {
+    const orderNumber = order.orderNumber;
+    // Atomic check-and-claim on Order document: only proceed if stockRestored is not true and paymentStatus is not Paid
+    const claimedOrder = await OrderModel.findOneAndUpdate(
+      {
+        orderNumber,
+        paymentStatus: { $ne: 'Paid' },
+        stockRestored: { $ne: true },
+      },
+      {
+        $set: {
+          stockRestored: true,
+          stockRestoredAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      },
+      { new: true }
+    ).lean();
+
+    if (!claimedOrder) {
+      // Another concurrent call already claimed/restored stock or marked order as Paid
+      const current = await OrderModel.findOne({ orderNumber }).lean();
+      if (current && current.stockRestored) {
+        return {
+          success: true,
+          alreadyRestored: true,
+          orderNumber,
+          message: 'Stock was already restored for this order concurrently',
+          restoredItems: [],
+        };
+      }
+      return {
+        success: false,
+        cannotRestore: true,
+        reason: current?.paymentStatus === 'Paid' ? 'Order is Paid' : 'Order could not be claimed for stock restoration',
+        restoredItems: [],
+      };
+    }
+
+    // Atomically increment stock for each item in the order
+    for (const item of items) {
+      if (item.productId && item.quantity > 0) {
+        const qty = Number(item.quantity);
+        await ProductModel.updateOne(
+          { id: item.productId },
+          { $inc: { stock: qty } }
+        );
+        restoredItems.push({ productId: item.productId, quantity: qty });
+      }
+    }
+  } else {
+    // Development local storage fallback
+    const db = getDbData();
+    const localOrd = (db.orders || []).find(
+      (o) => o.orderNumber === order.orderNumber || o.id === order.id
+    );
+
+    const targetOrd = localOrd || order;
+
+    if (targetOrd.paymentStatus === 'Paid') {
+      return {
+        success: false,
+        cannotRestore: true,
+        reason: 'Cannot restore inventory for an order that is already confirmed and Paid',
+        restoredItems: [],
+      };
+    }
+    if (targetOrd.stockRestored === true) {
+      return {
+        success: true,
+        alreadyRestored: true,
+        orderNumber: targetOrd.orderNumber,
+        message: 'Stock was already restored for this order previously',
+        restoredItems: [],
+      };
+    }
+
+    targetOrd.stockRestored = true;
+    targetOrd.stockRestoredAt = new Date().toISOString();
+    targetOrd.updatedAt = new Date().toISOString();
+
+    for (const item of items) {
+      if (item.productId && item.quantity > 0) {
+        const qty = Number(item.quantity);
+        const prod = (db.products || []).find((p) => p.id === item.productId);
+        if (prod) {
+          prod.stock = Math.max(0, (Number(prod.stock) || 0) + qty);
+          restoredItems.push({ productId: item.productId, quantity: qty });
+        } else {
+          restoredItems.push({ productId: item.productId, quantity: qty });
+        }
+      }
+    }
+    if (localOrd) {
+      saveDbData(db);
+    }
+  }
+
+  return {
+    success: true,
+    orderNumber: order.orderNumber,
+    stockRestored: true,
+    restoredItems,
+  };
+};
+
 // --- AUTHENTICATION & AUTHORIZATION MIDDLEWARE ---
 export const authenticateAdmin = (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -432,16 +598,17 @@ app.get('/api/products', async (req, res) => {
         query.fabric = fabric;
       }
       if (color && color !== 'All') {
-        query.color = new RegExp(color, 'i');
+        query.color = new RegExp(escapeRegex(String(color).trim()), 'i');
       }
       if (occasion && occasion !== 'All') {
-        query.occasion = new RegExp(occasion, 'i');
+        query.occasion = new RegExp(escapeRegex(String(occasion).trim()), 'i');
       }
       if (inStock === 'true') {
         query.stock = { $gt: 0 };
       }
       if (search && search.trim()) {
-        const regex = new RegExp(search.trim(), 'i');
+        const cleanSearch = escapeRegex(search.trim());
+        const regex = new RegExp(cleanSearch, 'i');
         query.$or = [{ name: regex }, { sku: regex }, { fabric: regex }, { description: regex }];
       }
 
@@ -669,6 +836,12 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
       awbNumber: '',
       trackingUrl: '',
       shipmentId: '',
+      shiprocketOrderId: '',
+      shipmentStatus: '',
+      pickupTokenNumber: '',
+      pickupScheduledDate: '',
+      pickupStatus: '',
+      shippingLabelUrl: '',
       cashfreeOrderId: null,
       cashfreePaymentId: null,
       cashfreePaymentSessionId: null,
@@ -680,6 +853,10 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
       idempotencyKey: idempotencyKey || null,
       emailNotificationSent: false,
       emailNotificationSentAt: null,
+      shippingEmailSent: false,
+      shippingEmailSentAt: null,
+      stockRestored: false,
+      stockRestoredAt: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -853,6 +1030,9 @@ app.get('/api/orders/:idOrNumber', trackingLimiter, async (req, res) => {
       courierName: cleanOrder.courierName,
       awbNumber: cleanOrder.awbNumber,
       trackingUrl: cleanOrder.trackingUrl,
+      shipmentStatus: cleanOrder.shipmentStatus || '',
+      pickupStatus: cleanOrder.pickupStatus || '',
+      pickupScheduledDate: cleanOrder.pickupScheduledDate || '',
       paymentMethod: cleanOrder.paymentMethod,
       paymentStatus: cleanOrder.paymentStatus,
       itemsCount: cleanOrder.items.reduce((sum, i) => sum + i.quantity, 0),
@@ -979,6 +1159,36 @@ app.patch('/api/admin/orders/:id/status', authenticateAdmin, async (req, res) =>
   try {
     const { id } = req.params;
     const { orderStatus, paymentStatus, courierName, awbNumber, trackingUrl } = req.body;
+
+    // Strict Dispatch Guard: An order must not be marked Dispatched or In Transit without valid AWB and courier partner
+    const DISPATCH_BLOCKED_STATUSES = ['Dispatched', 'In Transit'];
+    if (orderStatus && DISPATCH_BLOCKED_STATUSES.includes(orderStatus)) {
+      let existing = null;
+      if (isMongoReady()) {
+        existing = await OrderModel.findOne({ $or: [{ id }, { orderNumber: id }] }).lean();
+      } else {
+        const db = getDbData();
+        existing = (db.orders || []).find((o) => o.id === id || o.orderNumber === id);
+      }
+
+      if (!existing) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+
+      const effectiveAwb = String(awbNumber || existing.awbNumber || '').trim();
+      const effectiveCourier = String(courierName || existing.courierName || '').trim();
+
+      if (!effectiveAwb || !effectiveCourier) {
+        const missing = [];
+        if (!effectiveAwb) missing.push('valid AWB tracking number');
+        if (!effectiveCourier) missing.push('courier/shipping partner name');
+        return res.status(400).json({
+          error: `Cannot mark order as "${orderStatus}" without ${missing.join(' and ')}. Please assign an AWB and courier partner before dispatching.`,
+          code: 'MISSING_SHIPPING_DETAILS',
+          missingFields: missing,
+        });
+      }
+    }
 
     const updateFields = { updatedAt: new Date().toISOString() };
     if (orderStatus) updateFields.orderStatus = orderStatus;
@@ -1160,38 +1370,133 @@ app.post('/api/admin/products/reset-demo', authenticateAdmin, async (req, res) =
 // ==========================================
 
 // --- CASHFREE PAYMENT GATEWAY HELPER ---
-function getCashfreeConfig() {
-  const appId = process.env.CASHFREE_APP_ID?.trim();
-  const secretKey = process.env.CASHFREE_SECRET_KEY?.trim();
-  const rawEnv = (process.env.CASHFREE_ENV || process.env.CASHFREE_ENVIRONMENT || 'TEST').trim().toUpperCase();
-  const isProduction = rawEnv === 'PRODUCTION' || rawEnv === 'PROD';
-  const apiVersion = process.env.CASHFREE_API_VERSION?.trim() || '2023-08-01';
+function sanitizeEnvValue(val) {
+  if (!val) return '';
+  let cleaned = String(val).trim();
+  if (
+    (cleaned.startsWith('"') && cleaned.endsWith('"') && cleaned.length >= 2) ||
+    (cleaned.startsWith("'") && cleaned.endsWith("'") && cleaned.length >= 2)
+  ) {
+    cleaned = cleaned.slice(1, -1).trim();
+  }
+  return cleaned;
+}
 
-  const baseUrl = isProduction ? 'https://api.cashfree.com/pg' : 'https://sandbox.cashfree.com/pg';
-  const isConfigured = Boolean(
-    appId &&
-    secretKey &&
-    !appId.includes('placeholder') &&
-    !secretKey.includes('placeholder') &&
-    secretKey !== 'test_cashfree_secret_key'
+function inspectCashfreeCredentials(rawAppId, rawSecretKey, rawEnv) {
+  const appId = sanitizeEnvValue(rawAppId);
+  const secretKey = sanitizeEnvValue(rawSecretKey);
+  const hadQuotes = Boolean(
+    (rawAppId && rawAppId.trim() !== appId) ||
+    (rawSecretKey && rawSecretKey.trim() !== secretKey)
   );
+
+  const cleanEnv = (rawEnv || 'TEST').trim().toUpperCase();
+  const isConfiguredProduction = cleanEnv === 'PRODUCTION' || cleanEnv === 'PROD';
+  const targetEnv = isConfiguredProduction ? 'production' : 'sandbox';
+
+  // Secret Key classification (without exposing key content)
+  // Cashfree sandbox keys start with cfsk_ma_test_
+  // Cashfree production keys start with cfsk_ma_prod_
+  let secretKeyType = 'standard';
+  if (secretKey.startsWith('cfsk_ma_test_') || secretKey.toLowerCase().includes('_test_')) {
+    secretKeyType = 'sandbox';
+  } else if (secretKey.startsWith('cfsk_ma_prod_') || secretKey.toLowerCase().includes('_prod_')) {
+    secretKeyType = 'production';
+  }
+
+  // App ID classification
+  let appIdType = 'standard';
+  if (appId.toUpperCase().startsWith('TEST') || appId.toLowerCase().includes('test')) {
+    appIdType = 'sandbox';
+  } else if (appId.toUpperCase().startsWith('PROD') || appId.toLowerCase().includes('prod')) {
+    appIdType = 'production';
+  }
+
+  // Check if App ID and Secret Key belong to the same environment
+  let credentialsMatchEachOther = true;
+  if (secretKeyType !== 'standard' && appIdType !== 'standard') {
+    credentialsMatchEachOther = (secretKeyType === appIdType);
+  }
+
+  // Check if credentials match the configured CASHFREE_ENV
+  let credentialsMatchEnv = true;
+  let mismatchReason = null;
+  let suggestedAction = null;
+
+  if (secretKeyType === 'production' && targetEnv === 'sandbox') {
+    credentialsMatchEnv = false;
+    mismatchReason = 'CASHFREE_ENV is configured as TEST (sandbox.cashfree.com), but CASHFREE_SECRET_KEY is a live Production key (starts with cfsk_ma_prod_). Cashfree Sandbox rejects production credentials with "authentication Failed".';
+    suggestedAction = 'If your Cashfree account is activated for live transactions, set CASHFREE_ENV=PRODUCTION in Render Environment Variables. Otherwise, generate and enter Sandbox test credentials from sandbox.cashfree.com.';
+  } else if (secretKeyType === 'sandbox' && targetEnv === 'production') {
+    credentialsMatchEnv = false;
+    mismatchReason = 'CASHFREE_ENV is configured as PRODUCTION (api.cashfree.com), but CASHFREE_SECRET_KEY is a Sandbox test key (starts with cfsk_ma_test_). Cashfree Production rejects test credentials with "authentication Failed".';
+    suggestedAction = 'Enter live Production API credentials from merchant.cashfree.com in Render, or set CASHFREE_ENV=TEST to test in sandbox.';
+  } else if (!credentialsMatchEachOther) {
+    credentialsMatchEnv = false;
+    mismatchReason = `CASHFREE_APP_ID is recognized as ${appIdType} mode, but CASHFREE_SECRET_KEY is recognized as ${secretKeyType} mode.`;
+    suggestedAction = 'Ensure both CASHFREE_APP_ID and CASHFREE_SECRET_KEY are generated from the same environment in your Cashfree Merchant Dashboard.';
+  }
 
   return {
     appId,
     secretKey,
+    hadQuotes,
+    targetEnv,
+    secretKeyType,
+    appIdType,
+    credentialsMatchEachOther,
+    credentialsMatchEnv,
+    mismatchReason,
+    suggestedAction,
+  };
+}
+
+function getCashfreeConfig() {
+  const rawAppId = process.env.CASHFREE_APP_ID;
+  const rawSecretKey = process.env.CASHFREE_SECRET_KEY;
+  const rawEnv = process.env.CASHFREE_ENV || process.env.CASHFREE_ENVIRONMENT || 'TEST';
+  const apiVersion = sanitizeEnvValue(process.env.CASHFREE_API_VERSION) || '2023-08-01';
+
+  const creds = inspectCashfreeCredentials(rawAppId, rawSecretKey, rawEnv);
+  const isProduction = creds.targetEnv === 'production';
+  const baseUrl = isProduction ? 'https://api.cashfree.com/pg' : 'https://sandbox.cashfree.com/pg';
+
+  const isConfigured = Boolean(
+    creds.appId &&
+    creds.secretKey &&
+    !creds.appId.includes('placeholder') &&
+    !creds.secretKey.includes('placeholder') &&
+    creds.secretKey !== 'test_cashfree_secret_key'
+  );
+
+  return {
+    appId: creds.appId,
+    secretKey: creds.secretKey,
     isProduction,
-    environment: isProduction ? 'production' : 'sandbox',
+    environment: creds.targetEnv,
     apiVersion,
     baseUrl,
     isConfigured,
+    // Safe diagnostics metadata (no secrets exposed)
+    diagnostics: {
+      appIdConfigured: Boolean(creds.appId),
+      secretKeyConfigured: Boolean(creds.secretKey),
+      appIdType: creds.appIdType,
+      secretKeyType: creds.secretKeyType,
+      credentialsMatchEachOther: creds.credentialsMatchEachOther,
+      credentialsMatchEnv: creds.credentialsMatchEnv,
+      hadQuotesCleaned: creds.hadQuotes,
+      mismatchReason: creds.mismatchReason,
+      suggestedAction: creds.suggestedAction,
+    },
   };
 }
 
 // Public Payment Gateway Status (Read-only configuration; strictly no secret keys exposed)
 app.get('/api/payments/config', (req, res) => {
   const cfConfig = getCashfreeConfig();
-  const rzpKeyId = process.env.RAZORPAY_KEY_ID?.trim();
-  const rzpKeySecret = process.env.RAZORPAY_KEY_SECRET?.trim();
+  const rzpKeyId = sanitizeEnvValue(process.env.RAZORPAY_KEY_ID);
+  const rzpKeySecret = sanitizeEnvValue(process.env.RAZORPAY_KEY_SECRET);
   const isRzpConfigured = Boolean(
     rzpKeyId &&
     rzpKeySecret &&
@@ -1204,6 +1509,16 @@ app.get('/api/payments/config', (req, res) => {
       configured: cfConfig.isConfigured,
       environment: cfConfig.environment,
       apiVersion: cfConfig.apiVersion,
+      diagnostics: {
+        appIdConfigured: cfConfig.diagnostics.appIdConfigured,
+        secretConfigured: cfConfig.diagnostics.secretKeyConfigured,
+        appIdType: cfConfig.diagnostics.appIdType,
+        authMode: cfConfig.diagnostics.secretKeyType,
+        credentialsMatchEachOther: cfConfig.diagnostics.credentialsMatchEachOther,
+        credentialsMatchEnv: cfConfig.diagnostics.credentialsMatchEnv,
+        hadQuotesCleaned: cfConfig.diagnostics.hadQuotesCleaned,
+        mismatchReason: cfConfig.diagnostics.mismatchReason,
+      },
     },
     razorpay: {
       configured: isRzpConfigured,
@@ -1227,6 +1542,20 @@ app.post('/api/payments/create-cashfree-order', orderLimiter, async (req, res) =
         success: false,
         code: 'GATEWAY_NOT_CONFIGURED',
         message: 'Cashfree payment keys are not configured in the server environment. Please set up merchant credentials on Render.',
+      });
+    }
+
+    // Proactive check: Environment and credential mismatch guard
+    if (!cfConfig.diagnostics.credentialsMatchEnv) {
+      console.warn(`[Cashfree] Environment mismatch guard triggered: ${cfConfig.diagnostics.mismatchReason}`);
+      return res.status(400).json({
+        success: false,
+        code: 'CASHFREE_ENV_MISMATCH',
+        error: 'Cashfree environment configuration mismatch',
+        message: 'Online payment gateway is temporarily unavailable due to a configuration mismatch. Please select Cash on Delivery or contact store support.',
+        details: cfConfig.diagnostics.mismatchReason,
+        suggestedAction: cfConfig.diagnostics.suggestedAction,
+        environment: cfConfig.environment,
       });
     }
 
@@ -1291,8 +1620,28 @@ app.post('/api/payments/create-cashfree-order', orderLimiter, async (req, res) =
 
     if (!cfResponse.ok || !cfData.payment_session_id) {
       const errDetail = cfData.message || cfData.error || `Cashfree order creation failed (${cfResponse.status})`;
+      const isAuthError = cfResponse.status === 401 || String(errDetail).toLowerCase().includes('authentication');
+
+      // Safe diagnostic log without secrets, auth headers, or customer PII
+      console.warn(`[Cashfree] Order creation returned HTTP ${cfResponse.status}: ${isAuthError ? 'Authentication failure' : errDetail}`);
+
+      if (isAuthError) {
+        return res.status(401).json({
+          success: false,
+          code: 'CASHFREE_AUTH_FAILED',
+          error: 'Cashfree authentication failed',
+          message: 'Unable to authenticate with Cashfree Payment Gateway. Please verify that your Cashfree App ID, Secret Key, and environment match in Render.',
+          details: 'authentication Failed',
+          suggestedAction: cfConfig.diagnostics.suggestedAction || 'Ensure CASHFREE_APP_ID, CASHFREE_SECRET_KEY, and CASHFREE_ENV belong to the same environment (Test vs Production) in Render.',
+          environment: cfConfig.environment,
+        });
+      }
+
       return res.status(cfResponse.status || 500).json({
+        success: false,
+        code: 'CASHFREE_ORDER_CREATION_FAILED',
         error: 'Cashfree order creation failed',
+        message: 'Payment gateway could not generate a checkout session. Please try Cash on Delivery or contact support.',
         details: errDetail,
       });
     }
@@ -1399,6 +1748,17 @@ app.post('/api/payments/verify-cashfree', async (req, res) => {
     );
     const orderData = await orderResponse.json().catch(() => null);
 
+    if (paymentsResponse.status === 401 || orderResponse.status === 401) {
+      console.warn(`[Cashfree] Authentication failed (401) during payment verification for order #${orderNumber}`);
+      return res.status(401).json({
+        success: false,
+        code: 'CASHFREE_AUTH_FAILED',
+        paymentStatus: 'Pending',
+        message: 'Cashfree payment gateway authentication failed. Please verify merchant credentials in Render.',
+        details: 'authentication Failed',
+      });
+    }
+
     let successfulPayment = null;
     let failedPayment = null;
 
@@ -1434,6 +1794,9 @@ app.post('/api/payments/verify-cashfree', async (req, res) => {
             saveDbData(db);
           }
         }
+
+        // Restore reserved inventory stock for cancelled/failed Cashfree session
+        await restoreOrderInventoryStock(order);
       }
 
       return res.status(400).json({
@@ -1808,6 +2171,33 @@ app.post('/api/payments/record-failure', async (req, res) => {
       ? { $or: [{ cashfreeOrderId: cashfree_order_id }, { orderNumber: cashfree_order_id }] }
       : { razorpayOrderId: razorpay_order_id };
 
+    // 1. Locate the target order record
+    let order = null;
+    if (isMongoReady()) {
+      order = await OrderModel.findOne(query).lean();
+    } else {
+      const db = getDbData();
+      order = (db.orders || []).find(
+        (o) =>
+          (orderNumber && o.orderNumber === orderNumber) ||
+          (cashfree_order_id && (o.cashfreeOrderId === cashfree_order_id || o.orderNumber === cashfree_order_id)) ||
+          (razorpay_order_id && o.razorpayOrderId === razorpay_order_id)
+      );
+    }
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // 2. Never record failure or restore stock on an order that has already been verified as Paid
+    if (order.paymentStatus === 'Paid') {
+      return res.status(400).json({
+        error: 'Cannot record failure on an order that has already been verified and paid',
+        code: 'ORDER_ALREADY_PAID',
+      });
+    }
+
+    // 3. Update payment status to Failed
     const updateFields = {
       paymentStatus: 'Failed',
       paymentFailureReason: reason || 'Customer cancelled payment or transaction declined',
@@ -1815,22 +2205,27 @@ app.post('/api/payments/record-failure', async (req, res) => {
     };
 
     if (isMongoReady()) {
-      await OrderModel.updateOne(query, { $set: updateFields });
+      await OrderModel.updateOne({ orderNumber: order.orderNumber }, { $set: updateFields });
     } else {
       const db = getDbData();
-      const ord = (db.orders || []).find(
-        (o) =>
-          (orderNumber && o.orderNumber === orderNumber) ||
-          (cashfree_order_id && (o.cashfreeOrderId === cashfree_order_id || o.orderNumber === cashfree_order_id)) ||
-          (razorpay_order_id && o.razorpayOrderId === razorpay_order_id)
-      );
+      const ord = (db.orders || []).find((o) => o.orderNumber === order.orderNumber);
       if (ord) {
         Object.assign(ord, updateFields);
         saveDbData(db);
       }
     }
 
-    res.json({ success: true, message: 'Payment failure recorded' });
+    // 4. Restore reserved inventory stock (strictly idempotent, safe against duplicate calls)
+    const restoreResult = await restoreOrderInventoryStock(order);
+
+    res.json({
+      success: true,
+      message: 'Payment failure recorded and inventory updated',
+      orderNumber: order.orderNumber,
+      stockRestored: restoreResult.stockRestored || false,
+      alreadyRestored: restoreResult.alreadyRestored || false,
+      restoredItems: restoreResult.restoredItems || [],
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to record payment failure', details: error.message });
   }
@@ -1946,7 +2341,7 @@ app.get('/api/shipments/serviceability', async (req, res) => {
 
     const result = await checkCourierServiceability({
       deliveryPostcode: deliveryPincode,
-      pickupPostcode: pickupPincode || '631501',
+      pickupPostcode: pickupPincode || process.env.SHIPROCKET_PICKUP_PINCODE || '521125',
       cod: cod === '1' ? 1 : 0,
     });
 
@@ -1961,6 +2356,53 @@ app.get('/api/shipments/serviceability', async (req, res) => {
   }
 });
 
+// --- HELPER: Find and Update Order across MongoDB Atlas or local JSON store ---
+const findOrderRecord = async (idOrNumber) => {
+  if (!idOrNumber) return null;
+  const cleanId = String(idOrNumber).trim();
+  if (isMongoReady()) {
+    return await OrderModel.findOne({ $or: [{ id: cleanId }, { orderNumber: cleanId }] }).lean();
+  } else {
+    const db = getDbData();
+    return (db.orders || []).find((o) => o.id === cleanId || o.orderNumber === cleanId);
+  }
+};
+
+const updateOrderRecord = async (idOrNumber, updateFields) => {
+  const cleanId = String(idOrNumber).trim();
+  const fields = { ...updateFields, updatedAt: new Date().toISOString() };
+
+  if (isMongoReady()) {
+    const updated = await OrderModel.findOneAndUpdate(
+      { $or: [{ id: cleanId }, { orderNumber: cleanId }] },
+      { $set: fields },
+      { new: true }
+    ).lean();
+    if (updated) delete updated._id;
+    return updated;
+  } else {
+    const db = getDbData();
+    const order = (db.orders || []).find((o) => o.id === cleanId || o.orderNumber === cleanId);
+    if (order) {
+      Object.assign(order, fields);
+      saveDbData(db);
+    }
+    return order;
+  }
+};
+
+// Admin: Check Shiprocket Service Configuration Status (No credentials exposed)
+app.get('/api/admin/shiprocket/status', authenticateAdmin, (req, res) => {
+  const config = getShiprocketConfig();
+  res.json({
+    success: true,
+    ...config,
+    suggestedAction: config.isConfigured
+      ? 'Shiprocket API credentials are configured.'
+      : 'To enable live courier dispatch, set SHIPROCKET_EMAIL and SHIPROCKET_PASSWORD in Render Environment Variables.',
+  });
+});
+
 // Admin: Get Shiprocket Registered Pickup Locations
 app.get('/api/admin/shiprocket/pickup-locations', authenticateAdmin, async (req, res) => {
   try {
@@ -1968,7 +2410,7 @@ app.get('/api/admin/shiprocket/pickup-locations', authenticateAdmin, async (req,
       return res.status(400).json({
         success: false,
         code: 'SHIPROCKET_NOT_CONFIGURED',
-        message: 'Shiprocket email/password is not configured in server environment. Please set SHIPROCKET_EMAIL and SHIPROCKET_PASSWORD on Render.',
+        message: 'Shiprocket credentials are not configured in server environment. Please set SHIPROCKET_EMAIL and SHIPROCKET_PASSWORD on Render.',
       });
     }
 
@@ -1979,7 +2421,191 @@ app.get('/api/admin/shiprocket/pickup-locations', authenticateAdmin, async (req,
   }
 });
 
-// Admin: Dispatch Order via Shiprocket (Adhoc creation + AWB assignment)
+// Admin: Step 1 - Create Shipment in Shiprocket (Payment Gating & COD Verified)
+app.post('/api/admin/orders/:id/shiprocket/create-shipment', authenticateAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { pickupLocation } = req.body;
+
+    if (!isShiprocketConfigured()) {
+      return res.status(400).json({
+        success: false,
+        code: 'SHIPROCKET_NOT_CONFIGURED',
+        message: 'Shiprocket credentials are not configured on server. Please configure SHIPROCKET_EMAIL and SHIPROCKET_PASSWORD on Render.',
+      });
+    }
+
+    const order = await findOrderRecord(id);
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // 1. Payment Gating for Prepaid Orders:
+    // Only allow shipment creation after backend has verified payment as Paid
+    if (order.paymentMethod === 'Prepaid' && order.paymentStatus !== 'Paid') {
+      return res.status(400).json({
+        success: false,
+        code: 'PAYMENT_NOT_VERIFIED',
+        error: `Cannot create shipment for prepaid order: Payment has not been verified yet (current status: ${order.paymentStatus}). Verified payment is required before generating Shiprocket shipment.`,
+      });
+    }
+
+    // 2. COD Workflow Validation:
+    // Disallow dispatch if order was cancelled
+    if (order.orderStatus === 'Cancelled') {
+      return res.status(400).json({
+        success: false,
+        code: 'ORDER_CANCELLED',
+        error: 'Cannot create shipment for a cancelled order.',
+      });
+    }
+
+    // 3. Idempotency Check: Prevent duplicate Shiprocket shipments on retries or timeouts
+    if (order.shipmentId && order.shipmentId.trim()) {
+      return res.status(200).json({
+        success: true,
+        isExisting: true,
+        message: 'Shipment already exists for this order in Shiprocket.',
+        shipmentId: order.shipmentId,
+        shiprocketOrderId: order.shiprocketOrderId,
+        order,
+      });
+    }
+
+    // 4. Create Order in Shiprocket
+    const srOrderResult = await createShiprocketOrder(order, pickupLocation);
+
+    // 5. Update Database Record
+    const updateFields = {
+      shipmentId: String(srOrderResult.shipmentId),
+      shiprocketOrderId: String(srOrderResult.shiprocketOrderId),
+      shipmentStatus: srOrderResult.status || 'CREATED',
+      orderStatus: order.orderStatus === 'Order Placed' ? 'Processing' : order.orderStatus,
+    };
+
+    const updated = await updateOrderRecord(id, updateFields);
+    return res.json({ success: true, order: updated, shiprocket: srOrderResult });
+  } catch (error) {
+    res.status(500).json({ error: 'Shiprocket shipment creation failed', details: error.message });
+  }
+});
+
+// Admin: Step 2 - Assign AWB to Shipment
+app.post('/api/admin/orders/:id/shiprocket/assign-awb', authenticateAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { courierId } = req.body;
+
+    if (!isShiprocketConfigured()) {
+      return res.status(400).json({
+        success: false,
+        code: 'SHIPROCKET_NOT_CONFIGURED',
+        message: 'Shiprocket credentials are not configured on server.',
+      });
+    }
+
+    const order = await findOrderRecord(id);
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (!order.shipmentId) {
+      return res.status(400).json({
+        success: false,
+        code: 'SHIPMENT_REQUIRED',
+        error: 'Shipment must be created in Shiprocket before assigning AWB.',
+      });
+    }
+
+    // Idempotency: Return existing AWB if already assigned
+    if (order.awbNumber && order.awbNumber.trim()) {
+      return res.status(200).json({
+        success: true,
+        isExisting: true,
+        message: 'AWB is already assigned to this shipment.',
+        awbNumber: order.awbNumber,
+        courierName: order.courierName,
+        trackingUrl: order.trackingUrl,
+        order,
+      });
+    }
+
+    // Assign AWB through Shiprocket
+    const awbResult = await assignAwbToShipment(order.shipmentId, courierId);
+
+    const updateFields = {
+      awbNumber: awbResult.awbCode,
+      courierName: awbResult.courierName || 'Shiprocket Partner Courier',
+      trackingUrl: awbResult.trackingUrl || `https://shiprocket.co/tracking/${awbResult.awbCode}`,
+      shipmentStatus: 'AWB_ASSIGNED',
+    };
+
+    const updated = await updateOrderRecord(id, updateFields);
+    return res.json({ success: true, order: updated, awb: awbResult });
+  } catch (error) {
+    res.status(500).json({ error: 'Shiprocket AWB assignment failed', details: error.message });
+  }
+});
+
+// Admin: Step 3 - Request Courier Pickup (Prerequisites: Shipment and AWB must succeed)
+app.post('/api/admin/orders/:id/shiprocket/book-pickup', authenticateAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!isShiprocketConfigured()) {
+      return res.status(400).json({
+        success: false,
+        code: 'SHIPROCKET_NOT_CONFIGURED',
+        message: 'Shiprocket credentials are not configured on server.',
+      });
+    }
+
+    const order = await findOrderRecord(id);
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // Prerequisite enforcement: Both shipmentId and awbNumber must exist
+    if (!order.shipmentId || !order.awbNumber) {
+      return res.status(400).json({
+        success: false,
+        code: 'AWB_REQUIRED',
+        error: 'Both shipment creation and AWB assignment must succeed before booking courier pickup.',
+      });
+    }
+
+    // Request courier pickup
+    const pickupResult = await scheduleCourierPickup(order.shipmentId);
+
+    const updateFields = {
+      pickupStatus: pickupResult.pickupStatus || 'SCHEDULED',
+      pickupScheduledDate: pickupResult.pickupScheduledDate || new Date().toISOString(),
+      pickupTokenNumber: pickupResult.pickupTokenNumber || '',
+      shipmentStatus: 'PICKUP_SCHEDULED',
+      orderStatus: 'Ready for Pickup',
+    };
+
+    const updated = await updateOrderRecord(id, updateFields);
+
+    // Send shipping notification email to customer
+    if (updated && !updated.shippingEmailSent) {
+      sendShippingNotificationEmail(updated).then(async (mailResult) => {
+        if (mailResult && mailResult.success) {
+          await updateOrderRecord(id, {
+            shippingEmailSent: true,
+            shippingEmailSentAt: new Date().toISOString(),
+          }).catch((e) => console.error('[Shipping Notification] Error updating sent flag:', e.message));
+        }
+      }).catch((err) => console.error('[Shipping Notification] Failed to send email:', err.message));
+    }
+
+    return res.json({ success: true, order: updated, pickup: pickupResult });
+  } catch (error) {
+    res.status(500).json({ error: 'Courier pickup booking failed', details: error.message });
+  }
+});
+
+// Admin: 1-Click Complete Dispatch via Shiprocket (Safe, Idempotent, Multi-Step Pipeline)
 app.post('/api/admin/orders/:id/dispatch-shiprocket', authenticateAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1993,73 +2619,291 @@ app.post('/api/admin/orders/:id/dispatch-shiprocket', authenticateAdmin, async (
       });
     }
 
-    let order = null;
-    if (isMongoReady()) {
-      order = await OrderModel.findOne({ $or: [{ id }, { orderNumber: id }] }).lean();
-    } else {
-      const db = getDbData();
-      order = (db.orders || []).find((o) => o.id === id || o.orderNumber === id);
-    }
-
+    const order = await findOrderRecord(id);
     if (!order) {
       return res.status(404).json({ error: 'Order not found' });
     }
 
-    // 1. Create order in Shiprocket
-    const srOrderResult = await createShiprocketOrder(order, pickupLocation);
-
-    // 2. Assign AWB to shipment
-    let awbResult = null;
-    try {
-      awbResult = await assignAwbToShipment(srOrderResult.shipmentId);
-    } catch (awbErr) {
-      console.warn('AWB assignment notice:', awbErr.message);
+    // 1. Payment Gating for Prepaid Orders:
+    // Only allow shipment creation after backend has verified payment as Paid
+    if (order.paymentMethod === 'Prepaid' && order.paymentStatus !== 'Paid') {
+      return res.status(400).json({
+        success: false,
+        code: 'PAYMENT_NOT_VERIFIED',
+        error: `Cannot dispatch prepaid order: Payment has not been verified yet (current status: ${order.paymentStatus}). Verified payment is required before generating Shiprocket shipment.`,
+      });
     }
 
-    // 3. Update database record with official Shiprocket details
-    const updateFields = {
-      shipmentId: String(srOrderResult.shipmentId),
-      orderStatus: 'Ready for Pickup',
-      courierName: awbResult?.courierName || 'Shiprocket Partner Courier',
-      awbNumber: awbResult?.awbCode || '',
-      trackingUrl: awbResult?.trackingUrl || `https://shiprocket.co/tracking/${srOrderResult.shipmentId}`,
-      updatedAt: new Date().toISOString(),
+    // 2. COD Workflow Validation:
+    if (order.orderStatus === 'Cancelled') {
+      return res.status(400).json({
+        success: false,
+        code: 'ORDER_CANCELLED',
+        error: 'Cannot dispatch a cancelled order.',
+      });
+    }
+
+    // 3. Step 1: Create Shipment (or reuse existing shipmentId to prevent duplicate orders on retry)
+    let shipmentId = order.shipmentId;
+    let srOrderResult = null;
+
+    if (!shipmentId) {
+      srOrderResult = await createShiprocketOrder(order, pickupLocation);
+      shipmentId = String(srOrderResult.shipmentId);
+      await updateOrderRecord(id, {
+        shipmentId,
+        shiprocketOrderId: String(srOrderResult.shiprocketOrderId),
+        shipmentStatus: srOrderResult.status || 'CREATED',
+        orderStatus: order.orderStatus === 'Order Placed' ? 'Processing' : order.orderStatus,
+      });
+    }
+
+    // 4. Step 2: Assign AWB to shipment (or reuse existing awbNumber)
+    let awbResult = null;
+    let awbNumber = order.awbNumber;
+    let courierName = order.courierName;
+    let trackingUrl = order.trackingUrl;
+
+    if (!awbNumber) {
+      try {
+        awbResult = await assignAwbToShipment(shipmentId);
+        awbNumber = awbResult.awbCode;
+        courierName = awbResult.courierName;
+        trackingUrl = awbResult.trackingUrl;
+        await updateOrderRecord(id, {
+          awbNumber,
+          courierName: courierName || 'Shiprocket Partner Courier',
+          trackingUrl: trackingUrl || `https://shiprocket.co/tracking/${awbNumber}`,
+          shipmentStatus: 'AWB_ASSIGNED',
+        });
+      } catch (awbErr) {
+        console.warn(`[Shiprocket] AWB assignment warning for order ${order.orderNumber}:`, awbErr.message);
+        // Do NOT mark as shipped or dispatched if AWB failed!
+        const partiallyUpdated = await findOrderRecord(id);
+        return res.status(200).json({
+          success: true,
+          partial: true,
+          order: partiallyUpdated,
+          shiprocket: srOrderResult || { shipmentId },
+          awbError: awbErr.message,
+          message: `Shipment created (ID: ${shipmentId}), but AWB assignment was delayed or requires manual courier selection: ${awbErr.message}`,
+        });
+      }
+    }
+
+    // 5. Step 3: Request Courier Pickup (only after shipment and AWB succeeded)
+    let pickupResult = null;
+    let pickupError = null;
+    if (shipmentId && awbNumber) {
+      try {
+        pickupResult = await scheduleCourierPickup(shipmentId);
+      } catch (pkErr) {
+        console.warn(`[Shiprocket] Pickup scheduling warning for order ${order.orderNumber}:`, pkErr.message);
+        pickupError = pkErr.message;
+      }
+    }
+
+    // 6. Update Final Order Record
+    const finalUpdateFields = {
+      shipmentId: String(shipmentId),
+      courierName: courierName || 'Shiprocket Partner Courier',
+      awbNumber: awbNumber || '',
+      trackingUrl: trackingUrl || `https://shiprocket.co/tracking/${shipmentId}`,
+      orderStatus: pickupResult ? 'Ready for Pickup' : (awbNumber ? 'Processing' : order.orderStatus),
+      shipmentStatus: pickupResult ? 'PICKUP_SCHEDULED' : (awbNumber ? 'AWB_ASSIGNED' : 'CREATED'),
     };
 
-    if (isMongoReady()) {
-      const updated = await OrderModel.findOneAndUpdate(
-        { $or: [{ id }, { orderNumber: id }] },
-        { $set: updateFields },
-        { new: true }
-      ).lean();
-      if (updated) delete updated._id;
-      return res.json({ success: true, order: updated, shiprocket: srOrderResult, awb: awbResult });
-    } else {
-      const db = getDbData();
-      const localOrd = (db.orders || []).find((o) => o.id === id || o.orderNumber === id);
-      if (localOrd) {
-        Object.assign(localOrd, updateFields);
-        saveDbData(db);
-      }
-      return res.json({ success: true, order: localOrd, shiprocket: srOrderResult, awb: awbResult });
+    if (pickupResult) {
+      finalUpdateFields.pickupStatus = pickupResult.pickupStatus;
+      finalUpdateFields.pickupScheduledDate = pickupResult.pickupScheduledDate;
+      finalUpdateFields.pickupTokenNumber = pickupResult.pickupTokenNumber;
     }
+
+    // Handle COD orders safely: ensure paymentStatus remains Pending (never falsely mark as Paid)
+    if (order.paymentMethod === 'COD' && order.paymentStatus !== 'Paid') {
+      finalUpdateFields.paymentStatus = 'Pending';
+    }
+
+    const updated = await updateOrderRecord(id, finalUpdateFields);
+
+    // 7. Dispatch Shipping & Tracking Email Notification to Customer
+    if (updated && awbNumber && !updated.shippingEmailSent) {
+      sendShippingNotificationEmail(updated).then(async (mailResult) => {
+        if (mailResult && mailResult.success) {
+          await updateOrderRecord(id, {
+            shippingEmailSent: true,
+            shippingEmailSentAt: new Date().toISOString(),
+          }).catch((e) => console.error('[Shipping Notification] Error updating sent flag:', e.message));
+        }
+      }).catch((err) => console.error('[Shipping Notification] Failed to send email:', err.message));
+    }
+
+    return res.json({
+      success: true,
+      order: updated,
+      shiprocket: srOrderResult || { shipmentId },
+      awb: awbResult || { awbCode: awbNumber, courierName, trackingUrl },
+      pickup: pickupResult,
+      pickupError,
+    });
   } catch (error) {
     res.status(500).json({ error: 'Shiprocket dispatch failed', details: error.message });
   }
 });
 
-// Shiprocket Webhook Callback Endpoint
-app.post('/api/shipments/webhook', (req, res) => {
-  console.log('Received Shiprocket courier webhook payload:', req.body);
-  res.json({ received: true });
+// Admin: Live Tracking for an Order via Shiprocket API
+app.get('/api/admin/orders/:id/shiprocket/track', authenticateAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!isShiprocketConfigured()) {
+      return res.status(400).json({
+        success: false,
+        code: 'SHIPROCKET_NOT_CONFIGURED',
+        message: 'Shiprocket credentials are not configured on server.',
+      });
+    }
+
+    const order = await findOrderRecord(id);
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (!order.awbNumber) {
+      return res.status(400).json({
+        success: false,
+        code: 'NO_AWB',
+        error: 'No AWB tracking number has been assigned to this order yet.',
+      });
+    }
+
+    const trackingData = await trackAwbNumber(order.awbNumber);
+
+    // Sync live courier status to database if status transitioned
+    if (trackingData.currentStatus) {
+      const upperStatus = String(trackingData.currentStatus).toUpperCase();
+      let mappedOrderStatus = null;
+
+      if (upperStatus.includes('DELIVERED')) mappedOrderStatus = 'Delivered';
+      else if (upperStatus.includes('OUT FOR DELIVERY')) mappedOrderStatus = 'Out for Delivery';
+      else if (upperStatus.includes('IN TRANSIT') || upperStatus.includes('SHIPPED')) mappedOrderStatus = 'In Transit';
+      else if (upperStatus.includes('PICKED UP')) mappedOrderStatus = 'Picked Up';
+
+      const updateFields = { shipmentStatus: trackingData.currentStatus };
+      if (mappedOrderStatus && mappedOrderStatus !== order.orderStatus) {
+        updateFields.orderStatus = mappedOrderStatus;
+      }
+
+      // If COD delivered, mark paymentStatus as Paid
+      if (mappedOrderStatus === 'Delivered' && order.paymentMethod === 'COD' && order.paymentStatus !== 'Paid') {
+        updateFields.paymentStatus = 'Paid';
+      }
+
+      const updated = await updateOrderRecord(id, updateFields);
+      return res.json({ success: true, tracking: trackingData, order: updated });
+    }
+
+    return res.json({ success: true, tracking: trackingData, order });
+  } catch (error) {
+    res.status(500).json({ error: 'Shiprocket tracking check failed', details: error.message });
+  }
+});
+
+// Public: Customer Live Courier Tracking by AWB Number
+app.get('/api/shipments/track/:awb', trackingLimiter, async (req, res) => {
+  try {
+    const { awb } = req.params;
+    if (!awb || !awb.trim()) {
+      return res.status(400).json({ error: 'Valid AWB number is required' });
+    }
+
+    const cleanAwb = awb.trim();
+
+    if (!isShiprocketConfigured()) {
+      return res.json({
+        success: true,
+        isConfigured: false,
+        tracking: {
+          awbCode: cleanAwb,
+          currentStatus: 'Dispatched via Partner Express Courier',
+          message: 'Real-time courier sync will activate upon live credentials on Render.',
+        },
+      });
+    }
+
+    const trackingData = await trackAwbNumber(cleanAwb);
+    res.json({ success: true, isConfigured: true, tracking: trackingData });
+  } catch (error) {
+    res.status(500).json({ error: 'Tracking request failed', details: error.message });
+  }
+});
+
+// Shiprocket Webhook Callback Endpoint (Real-time Courier Status Sync)
+app.post('/api/shipments/webhook', async (req, res) => {
+  try {
+    const payload = req.body || {};
+    const awb = payload.awb || payload.awb_code || payload.awb_number;
+    const currentStatus = payload.current_status || payload.shipment_status || payload.status;
+    const orderNumber = payload.order_id || payload.channel_order_id;
+
+    console.info(`[Shiprocket Webhook] Received status "${currentStatus}" for AWB: ${awb || 'N/A'}, Order: ${orderNumber || 'N/A'}`);
+
+    if (awb || orderNumber) {
+      let order = null;
+      if (isMongoReady()) {
+        order = await OrderModel.findOne({
+          $or: [
+            ...(awb ? [{ awbNumber: String(awb) }] : []),
+            ...(orderNumber ? [{ orderNumber: String(orderNumber) }, { id: String(orderNumber) }] : []),
+          ],
+        }).lean();
+      } else {
+        const db = getDbData();
+        order = (db.orders || []).find(
+          (o) => (awb && o.awbNumber === String(awb)) || (orderNumber && (o.orderNumber === String(orderNumber) || o.id === String(orderNumber)))
+        );
+      }
+
+      if (order && currentStatus) {
+        const upper = String(currentStatus).toUpperCase();
+        let mappedStatus = null;
+
+        if (upper.includes('DELIVERED')) mappedStatus = 'Delivered';
+        else if (upper.includes('OUT FOR DELIVERY')) mappedStatus = 'Out for Delivery';
+        else if (upper.includes('IN TRANSIT') || upper.includes('SHIPPED')) mappedStatus = 'In Transit';
+        else if (upper.includes('PICKED UP')) mappedStatus = 'Picked Up';
+        else if (upper.includes('RTO')) mappedStatus = 'Returned';
+
+        const updateFields = {
+          shipmentStatus: String(currentStatus),
+        };
+
+        if (mappedStatus) {
+          updateFields.orderStatus = mappedStatus;
+        }
+
+        // If COD order confirmed delivered, mark payment collected
+        if (mappedStatus === 'Delivered' && order.paymentMethod === 'COD' && order.paymentStatus !== 'Paid') {
+          updateFields.paymentStatus = 'Paid';
+        }
+
+        await updateOrderRecord(order.id || order.orderNumber, updateFields);
+      }
+    }
+
+    res.json({ received: true, success: true });
+  } catch (webhookErr) {
+    console.error('[Shiprocket Webhook] Error processing event:', webhookErr.message);
+    res.json({ received: true, error: webhookErr.message });
+  }
 });
 
 // ==========================================
 // --- NOTIFICATION STATUS & TESTING ENDPOINTS ---
 // ==========================================
 
-// Check Email Notification Configuration Status (Safe for public/admin checks, no secrets exposed)
-app.get('/api/admin/notifications/status', (req, res) => {
+// Check Email Notification Configuration Status (Admin only, requires JWT token, no secrets exposed)
+app.get('/api/admin/notifications/status', authenticateAdmin, (req, res) => {
   const isConfigured = isMailerConfigured();
   const provider = getMailerProvider();
   let transportType = 'none';

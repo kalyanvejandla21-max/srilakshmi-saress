@@ -592,11 +592,23 @@ export const adminResetDemoCatalogApi = async (): Promise<boolean> => {
 
 // --- CASHFREE PAYMENT INTEGRATION SERVICES (PRIMARY) ---
 
+export interface CashfreeDiagnostics {
+  appIdConfigured?: boolean;
+  secretKeyConfigured?: boolean;
+  appIdType?: string;
+  secretKeyType?: string;
+  credentialsMatchEachOther?: boolean;
+  credentialsMatchEnv?: boolean;
+  hadQuotesCleaned?: boolean;
+  mismatchReason?: string | null;
+}
+
 export interface PaymentGatewayConfigResponse {
   cashfree: {
     configured: boolean;
     environment: 'sandbox' | 'production';
     apiVersion: string;
+    diagnostics?: CashfreeDiagnostics;
   };
   razorpay: {
     configured: boolean;
@@ -639,14 +651,19 @@ export const createCashfreeOrderApi = async (orderNumber: string): Promise<Creat
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const err: any = new Error(data.details || data.message || data.error || 'Failed to initialize Cashfree payment');
+    let friendlyMessage = data.message || data.details || data.error || 'Failed to initialize Cashfree payment';
+    if (data.code === 'CASHFREE_AUTH_FAILED' || data.code === 'CASHFREE_ENV_MISMATCH') {
+      friendlyMessage = 'Online Payment Gateway is currently undergoing verification. Please choose Cash on Delivery (COD) to place your order now, or try again later.';
+    }
+    const err: any = new Error(friendlyMessage);
     err.code = data.code;
+    err.details = data.details;
+    err.suggestedAction = data.suggestedAction;
     throw err;
   }
 
   return data;
 };
-
 export const verifyCashfreePaymentApi = async (orderNumber: string): Promise<Order> => {
   const response = await fetch(`${API_BASE_URL}/api/payments/verify-cashfree`, {
     method: 'POST',
@@ -656,7 +673,12 @@ export const verifyCashfreePaymentApi = async (orderNumber: string): Promise<Ord
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data.success) {
-    const err: any = new Error(data.message || data.details || 'Cashfree payment verification failed');
+    let friendlyMessage = data.message || data.details || 'Cashfree payment verification failed';
+    if (data.code === 'CASHFREE_AUTH_FAILED') {
+      friendlyMessage = 'Payment verification could not be confirmed at this moment. If your account was debited, our team will confirm your order manually.';
+    }
+    const err: any = new Error(friendlyMessage);
+    err.code = data.code;
     err.details = data.details;
     err.paymentStatus = data.paymentStatus;
     throw err;
@@ -696,7 +718,6 @@ export const createRazorpayOrderApi = async (orderNumber: string): Promise<Creat
 
   return data;
 };
-
 export interface VerifyPaymentPayload {
   orderNumber: string;
   razorpay_order_id: string;
@@ -764,7 +785,7 @@ export interface CourierServiceabilityResult {
 
 export const checkServiceabilityApi = async (
   deliveryPincode: string,
-  pickupPincode: string = '631501'
+  pickupPincode: string = '521125'
 ): Promise<CourierServiceabilityResult> => {
   try {
     const url = new URL(`${API_BASE_URL || window.location.origin}/api/shipments/serviceability`);
@@ -786,6 +807,23 @@ export const checkServiceabilityApi = async (
   };
 };
 
+export const adminGetShiprocketStatusApi = async (): Promise<{
+  isConfigured: boolean;
+  maskedEmail: string;
+  pickupLocation: string;
+  suggestedAction: string;
+}> => {
+  const token = getAdminToken();
+  if (!token) throw new Error('Admin authentication required');
+
+  const response = await fetch(`${API_BASE_URL}/api/admin/shiprocket/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || data.error || 'Failed to check Shiprocket status');
+  return data;
+};
 export const adminGetPickupLocationsApi = async (): Promise<any[]> => {
   const token = getAdminToken();
   if (!token) throw new Error('Admin authentication required');
@@ -800,10 +838,77 @@ export const adminGetPickupLocationsApi = async (): Promise<any[]> => {
   return data.locations || [];
 };
 
+export const adminCreateShipmentApi = async (
+  idOrNumber: string,
+  pickupLocation?: string
+): Promise<{ order: Order; shiprocket: any; isExisting?: boolean; message?: string }> => {
+  const token = getAdminToken();
+  if (!token) throw new Error('Admin authentication required');
+
+  const response = await fetch(`${API_BASE_URL}/api/admin/orders/${encodeURIComponent(idOrNumber)}/shiprocket/create-shipment`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({ pickupLocation })
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || data.message || 'Shiprocket shipment creation failed');
+  }
+
+  return data;
+};
+export const adminAssignAwbApi = async (
+  idOrNumber: string,
+  courierId?: number
+): Promise<{ order: Order; awb: any; isExisting?: boolean; message?: string }> => {
+  const token = getAdminToken();
+  if (!token) throw new Error('Admin authentication required');
+
+  const response = await fetch(`${API_BASE_URL}/api/admin/orders/${encodeURIComponent(idOrNumber)}/shiprocket/assign-awb`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({ courierId })
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || data.message || 'Shiprocket AWB assignment failed');
+  }
+
+  return data;
+};
+export const adminBookPickupApi = async (
+  idOrNumber: string
+): Promise<{ order: Order; pickup: any; message?: string }> => {
+  const token = getAdminToken();
+  if (!token) throw new Error('Admin authentication required');
+
+  const response = await fetch(`${API_BASE_URL}/api/admin/orders/${encodeURIComponent(idOrNumber)}/shiprocket/book-pickup`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    }
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || data.message || 'Courier pickup booking failed');
+  }
+
+  return data;
+};
 export const adminDispatchShiprocketApi = async (
   idOrNumber: string,
   pickupLocation?: string
-): Promise<{ order: Order; shiprocket: any; awb: any }> => {
+): Promise<{ order: Order; shiprocket: any; awb: any; pickup?: any; partial?: boolean; message?: string }> => {
   const token = getAdminToken();
   if (!token) throw new Error('Admin authentication required');
 
@@ -821,5 +926,47 @@ export const adminDispatchShiprocketApi = async (
     throw new Error(data.message || data.error || 'Shiprocket dispatch failed');
   }
 
+  return data;
+};
+export const adminTrackShipmentApi = async (
+  idOrNumber: string
+): Promise<{ order: Order; tracking: any }> => {
+  const token = getAdminToken();
+  if (!token) throw new Error('Admin authentication required');
+
+  const response = await fetch(`${API_BASE_URL}/api/admin/orders/${encodeURIComponent(idOrNumber)}/shiprocket/track`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || data.message || 'Failed to fetch shipment tracking');
+  }
+
+  return data;
+};
+export const adminGetNotificationStatusApi = async (): Promise<any> => {
+  const token = getAdminToken();
+  if (!token) throw new Error('Admin authentication required');
+
+  const response = await fetch(`${API_BASE_URL}/api/admin/notifications/status`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to fetch notification status');
+  }
+
+  return data;
+};
+export const trackShipmentPublicApi = async (
+  awbNumber: string
+): Promise<{ isConfigured: boolean; tracking: any }> => {
+  const response = await fetch(`${API_BASE_URL}/api/shipments/track/${encodeURIComponent(awbNumber)}`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || data.message || 'Shipment tracking failed');
+  }
   return data;
 };

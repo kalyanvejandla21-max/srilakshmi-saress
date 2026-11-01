@@ -112,6 +112,14 @@ export interface Order {
   awbNumber?: string;
   trackingUrl?: string;
   shipmentId?: string;
+  shiprocketOrderId?: string;
+  shipmentStatus?: string;
+  pickupTokenNumber?: string;
+  pickupScheduledDate?: string;
+  pickupStatus?: string;
+  shippingLabelUrl?: string;
+  shippingEmailSent?: boolean;
+  shippingEmailSentAt?: string;
   cashfreeOrderId?: string;
   cashfreePaymentId?: string;
   cashfreePaymentSessionId?: string;
