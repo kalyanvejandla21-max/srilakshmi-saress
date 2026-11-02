@@ -183,8 +183,25 @@ export const Footer: React.FC = () => {
           <div>
             © {new Date().getFullYear()} {BUSINESS_CONFIG.brandName}. Family-run enterprise in India.
           </div>
-          <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <span>Verified Secure Payments: Cashfree | UPI | Net Banking | Cards | COD</span>
+            <Link
+              to="/admin/login"
+              style={{
+                color: '#6B655F',
+                fontSize: '0.75rem',
+                textDecoration: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+                transition: 'color 0.2s ease',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#D4AF37')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#6B655F')}
+              title="Store Administrator Portal"
+            >
+              <Lock size={11} /> Admin Portal
+            </Link>
           </div>
         </div>
       </div>

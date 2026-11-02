@@ -26,6 +26,8 @@ import { PolicyPage } from './pages/PolicyPage';
 import { AboutPage } from './pages/AboutPage';
 import { ContactPage } from './pages/ContactPage';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
+import { AdminLoginPage } from './pages/admin/AdminLoginPage';
+import { useAuth } from './context/AuthContext';
 import { getStoredAnnouncement } from './services/api';
 
 // Scroll to top on every route navigation
@@ -37,6 +39,18 @@ const ScrollToTop: React.FC = () => {
   }, [pathname]);
 
   return null;
+};
+
+// Admin Protected Route Guard
+const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAdmin } = useAuth();
+  const location = useLocation();
+
+  if (!isAdmin) {
+    return <Navigate to="/admin/login" state={{ from: location }} replace />;
+  }
+
+  return <>{children}</>;
 };
 
 // Main Layout Wrapper
@@ -89,7 +103,15 @@ const AppLayout: React.FC = () => {
           <Route path="/policy/:policyType" element={<PolicyPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/contact" element={<ContactPage />} />
-          <Route path="/admin" element={<AdminDashboard />} />
+          <Route
+            path="/admin"
+            element={
+              <AdminRoute>
+                <AdminDashboard />
+              </AdminRoute>
+            }
+          />
+          <Route path="/admin/login" element={<AdminLoginPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

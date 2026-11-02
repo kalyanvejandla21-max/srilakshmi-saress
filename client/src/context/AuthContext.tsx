@@ -6,6 +6,7 @@ import { adminLoginApi, clearAdminToken, getAdminToken } from '../services/api';
 interface AuthContextType {
   user: User | null;
   login: (email: string, password?: string) => Promise<boolean>;
+  loginAdmin: (password: string) => Promise<boolean>;
   logout: () => void;
   register: (name: string, email: string, phone?: string) => boolean;
   isAdmin: boolean;
@@ -16,7 +17,28 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('sls_user');
-    return saved ? JSON.parse(saved) : null;
+    const token = getAdminToken();
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed?.role === 'admin' && !token) {
+          return null;
+        }
+        return parsed;
+      } catch {
+        return null;
+      }
+    }
+    // If admin token exists on page load, preserve authenticated admin session
+    if (token) {
+      return {
+        id: 'user-admin-1',
+        name: 'Store Administrator',
+        email: 'admin@srilakshmisarees.com',
+        role: 'admin'
+      };
+    }
+    return null;
   });
   const { showToast } = useToast();
 
@@ -28,13 +50,32 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [user]);
 
-  // If page is loaded with an admin token and user is marked admin, verify session
+  // If page is loaded without an admin token and user is marked admin, clear session
   useEffect(() => {
     const token = getAdminToken();
     if (!token && user?.role === 'admin') {
       setUser(null);
     }
   }, [user?.role]);
+
+  // Dedicated Admin Login using password only
+  const loginAdmin = async (password: string): Promise<boolean> => {
+    try {
+      const adminRes = await adminLoginApi(password.trim());
+      const adminUser: User = {
+        id: 'user-admin-1',
+        name: 'Store Administrator',
+        email: adminRes.email || 'admin@srilakshmisarees.com',
+        role: 'admin'
+      };
+      setUser(adminUser);
+      showToast('Authenticated successfully. Welcome to Admin Portal.', 'success');
+      return true;
+    } catch (adminErr: any) {
+      showToast(adminErr.message || 'Invalid administrator password.', 'error');
+      return false;
+    }
+  };
 
   const login = async (email: string, password?: string): Promise<boolean> => {
     const cleanEmail = email.toLowerCase().trim();
@@ -95,7 +136,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const isAdmin = user?.role === 'admin' && !!getAdminToken();
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, register, isAdmin }}>
+    <AuthContext.Provider value={{ user, login, loginAdmin, logout, register, isAdmin }}>
       {children}
     </AuthContext.Provider>
   );

@@ -47,8 +47,15 @@ const JWT_SECRET = process.env.JWT_SECRET || 'sls_jwt_secure_secret_prod_key_202
 
 // Admin Credentials Configuration
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'admin@srilakshmisarees.com').toLowerCase().trim();
-// Pre-computed hash of default secure password or password from env
-const DEFAULT_ADMIN_PASS_HASH = bcrypt.hashSync(process.env.ADMIN_PASSWORD || 'admin@SLS2026!', 10);
+
+// Safely get configured admin password strictly from environment variables without hardcoded fallback
+export const getAdminPassword = () => {
+  const pass = process.env.ADMIN_PASSWORD;
+  if (!pass || typeof pass !== 'string' || !pass.trim()) {
+    return null;
+  }
+  return pass.trim();
+};
 
 // --- SECURITY HEADERS MIDDLEWARE ---
 app.use((req, res, next) => {
@@ -1066,22 +1073,35 @@ app.get('/api/orders/:idOrNumber', trackingLimiter, async (req, res) => {
 // Admin Login Endpoint
 app.post('/api/admin/login', loginLimiter, async (req, res) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+    const configuredAdminPassword = getAdminPassword();
+    if (!configuredAdminPassword) {
+      console.warn('[Admin Auth] ADMIN_PASSWORD environment variable is not configured.');
+      return res.status(503).json({
+        error: 'Administrator authentication is currently unavailable. Please configure administrator credentials in environment settings.'
+      });
     }
 
-    const inputEmail = String(email).toLowerCase().trim();
+    const { email, password } = req.body;
+    if (!password) {
+      return res.status(400).json({ error: 'Password is required' });
+    }
 
-    // Verify email against configured admin email
+    // Email is optional for direct password-only admin portal login, defaulting to ADMIN_EMAIL
+    const inputEmail = email ? String(email).toLowerCase().trim() : ADMIN_EMAIL;
+
+    // Verify email against configured admin email if provided
     if (inputEmail !== ADMIN_EMAIL) {
       return res.status(401).json({ error: 'Invalid administrator credentials' });
     }
 
-    // Verify password against secure bcrypt hash
-    const isPasswordValid = bcrypt.compareSync(password, DEFAULT_ADMIN_PASS_HASH);
+    // Verify password against configured admin password (direct string or bcrypt hash)
+    const trimmedPass = String(password).trim();
+    const isPasswordValid =
+      trimmedPass === configuredAdminPassword ||
+      (configuredAdminPassword.startsWith('$2') && bcrypt.compareSync(trimmedPass, configuredAdminPassword));
+
     if (!isPasswordValid) {
-      return res.status(401).json({ error: 'Invalid administrator credentials' });
+      return res.status(401).json({ error: 'Invalid administrator password' });
     }
 
     // Generate signed JWT token valid for 24 hours

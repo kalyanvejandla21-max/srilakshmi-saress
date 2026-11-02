@@ -466,11 +466,29 @@ export const fetchOrderFromServer = async (
 
 // --- ADMIN API SERVICES ---
 
-export const adminLoginApi = async (email: string, password: string): Promise<{ token: string; email: string }> => {
+export const adminLoginApi = async (
+  passwordOrEmail: string,
+  maybePassword?: string
+): Promise<{ token: string; email: string }> => {
+  let email: string | undefined;
+  let password: string;
+
+  if (maybePassword !== undefined) {
+    email = passwordOrEmail;
+    password = maybePassword;
+  } else {
+    password = passwordOrEmail;
+  }
+
+  const payload: { password: string; email?: string } = { password: password.trim() };
+  if (email && email.trim()) {
+    payload.email = email.trim();
+  }
+
   const response = await fetch(`${API_BASE_URL}/api/admin/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password })
+    body: JSON.stringify(payload)
   });
 
   const data = await response.json().catch(() => ({}));
@@ -480,7 +498,7 @@ export const adminLoginApi = async (email: string, password: string): Promise<{ 
 
   if (data.success && data.token) {
     setAdminToken(data.token);
-    return { token: data.token, email: data.admin?.email || email };
+    return { token: data.token, email: data.admin?.email || email || 'admin@srilakshmisarees.com' };
   }
 
   throw new Error('Failed to retrieve authentication token');

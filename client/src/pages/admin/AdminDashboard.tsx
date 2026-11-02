@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Package,
   ShoppingBag,
@@ -22,6 +22,10 @@ import {
   RefreshCw,
   Clock,
   ShieldCheck,
+  LogOut,
+  Calendar,
+  CreditCard,
+  Check,
 } from 'lucide-react';
 import { Product, Order, OrderStatus, SareeCategory } from '../../types';
 import {
@@ -43,8 +47,9 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 
 export const AdminDashboard: React.FC = () => {
-  const { isAdmin } = useAuth();
+  const { isAdmin, logout } = useAuth();
   const { showToast } = useToast();
+  const navigate = useNavigate();
 
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -55,6 +60,8 @@ export const AdminDashboard: React.FC = () => {
   // Search & Filter state for orders
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>('All');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>('All');
+  const [dateFilter, setDateFilter] = useState<string>('All');
 
   // Order Details & Dispatch Modal state
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -120,15 +127,31 @@ export const AdminDashboard: React.FC = () => {
         <p style={{ marginTop: '0.5rem', marginBottom: '1.5rem', color: 'var(--color-text-muted)' }}>
           You must be authenticated as an Administrator with a valid session token to access this management dashboard.
         </p>
-        <Link to="/login" className="btn-primary">
-          Sign In as Administrator
+        <Link to="/admin/login" className="btn-primary">
+          Sign In to Admin Portal
         </Link>
       </div>
     );
   }
 
-  // Update Order Status Handler
+  // Safe Order Status Transition Handler with Dispatch Guard
   const handleStatusChange = async (orderId: string, newStatus: OrderStatus) => {
+    const targetOrder = orders.find((o) => o.id === orderId || o.orderNumber === orderId);
+
+    // Front-end status transition safeguard: disallow Dispatched or In Transit without valid AWB and courier
+    if (newStatus === 'Dispatched' || newStatus === 'In Transit') {
+      const hasAwb = Boolean(targetOrder?.awbNumber || targetOrder?.shipping?.awbNumber || targetOrder?.trackingNumber);
+      const hasCourier = Boolean(targetOrder?.courierName || targetOrder?.shipping?.courierName || targetOrder?.courierPartner);
+
+      if (!hasAwb || !hasCourier) {
+        showToast(
+          `Cannot mark as "${newStatus}". A valid AWB number and courier partner must be assigned first via Shiprocket or dispatch modal.`,
+          'error'
+        );
+        return;
+      }
+    }
+
     try {
       const updated = await adminUpdateOrderStatusApi(orderId, { orderStatus: newStatus });
       setOrders((prev) => prev.map((o) => (o.id === orderId || o.orderNumber === orderId ? updated : o)));
@@ -243,13 +266,22 @@ export const AdminDashboard: React.FC = () => {
   const handleSaveManualDispatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedOrder) return;
+
+    const hasBoth = Boolean(manualCourier.trim() && manualAwb.trim());
+    if (manualAwb.trim() && !manualCourier.trim()) {
+      showToast('Please specify the courier partner name along with the AWB number.', 'error');
+      return;
+    }
+
     try {
       const updated = await adminUpdateOrderStatusApi(selectedOrder.id || selectedOrder.orderNumber, {
-        courierName: manualCourier,
-        awbNumber: manualAwb,
-        trackingUrl: manualTrackingUrl,
+        courierName: manualCourier.trim(),
+        awbNumber: manualAwb.trim(),
+        trackingUrl: manualTrackingUrl.trim(),
         paymentStatus: manualPaymentStatus as any,
-        orderStatus: manualAwb && selectedOrder.orderStatus === 'Order Placed' ? 'In Transit' : selectedOrder.orderStatus,
+        orderStatus: hasBoth && (selectedOrder.orderStatus === 'Order Placed' || selectedOrder.orderStatus === 'Processing' || selectedOrder.orderStatus === 'Ready for Pickup')
+          ? 'In Transit'
+          : selectedOrder.orderStatus,
       });
       setOrders((prev) => prev.map((o) => (o.id === selectedOrder.id || o.orderNumber === selectedOrder.orderNumber ? updated : o)));
       setSelectedOrder(updated);
@@ -356,9 +388,52 @@ export const AdminDashboard: React.FC = () => {
   const activeProducts = products.filter((p) => p.isActive);
   const lowStockProducts = activeProducts.filter((p) => p.stock <= 5);
 
+  const totalOrdersCount = orders.length;
+  const newOrdersCount = orders.filter((o) => o.orderStatus === 'Order Placed').length;
+  const processingOrdersCount = orders.filter(
+    (o) => o.orderStatus === 'Processing' || o.orderStatus === 'Payment Confirmed' || o.orderStatus === 'Ready for Pickup'
+  ).length;
+  const dispatchedOrdersCount = orders.filter(
+    (o) => o.orderStatus === 'Dispatched' || o.orderStatus === 'In Transit' || o.orderStatus === 'Out for Delivery'
+  ).length;
+  const deliveredOrdersCount = orders.filter((o) => o.orderStatus === 'Delivered').length;
+  const pendingPaymentsCount = orders.filter((o) => o.paymentStatus === 'Pending').length;
+
+  // Date Filter Helper
+  const isDateMatching = (createdAt: string, filter: string) => {
+    if (filter === 'All') return true;
+    const orderDate = new Date(createdAt);
+    if (isNaN(orderDate.getTime())) return true;
+    const now = new Date();
+    if (filter === 'Today') {
+      return (
+        orderDate.getDate() === now.getDate() &&
+        orderDate.getMonth() === now.getMonth() &&
+        orderDate.getFullYear() === now.getFullYear()
+      );
+    }
+    if (filter === '7days') {
+      const diffTime = Math.abs(now.getTime() - orderDate.getTime());
+      const diffDays = diffTime / (1000 * 60 * 60 * 24);
+      return diffDays <= 7;
+    }
+    if (filter === '30days') {
+      const diffTime = Math.abs(now.getTime() - orderDate.getTime());
+      const diffDays = diffTime / (1000 * 60 * 60 * 24);
+      return diffDays <= 30;
+    }
+    return true;
+  };
+
   // Filtered Orders
   const filteredOrders = orders.filter((ord) => {
     if (orderStatusFilter !== 'All' && ord.orderStatus !== orderStatusFilter) {
+      return false;
+    }
+    if (paymentStatusFilter !== 'All' && ord.paymentStatus !== paymentStatusFilter) {
+      return false;
+    }
+    if (!isDateMatching(ord.createdAt, dateFilter)) {
       return false;
     }
     if (orderSearchQuery.trim()) {
@@ -366,10 +441,36 @@ export const AdminDashboard: React.FC = () => {
       const matchNum = ord.orderNumber.toLowerCase().includes(q);
       const matchName = ord.shippingAddress?.fullName?.toLowerCase().includes(q);
       const matchPhone = ord.shippingAddress?.phone?.includes(q);
-      if (!matchNum && !matchName && !matchPhone) return false;
+      const matchEmail = (ord.guestEmail || ord.shippingAddress?.email || '').toLowerCase().includes(q);
+      const matchPin = ord.shippingAddress?.pincode?.includes(q);
+      if (!matchNum && !matchName && !matchPhone && !matchEmail && !matchPin) return false;
     }
     return true;
   });
+
+  const getShippingBadge = (ord: Order) => {
+    if (ord.orderStatus === 'Delivered') {
+      return { text: 'Delivered', bg: '#ECFDF5', color: '#065F46', border: '#A7F3D0' };
+    }
+    if (ord.orderStatus === 'In Transit' || ord.orderStatus === 'Dispatched' || ord.orderStatus === 'Out for Delivery') {
+      return { text: ord.orderStatus, bg: '#EFF6FF', color: '#1E40AF', border: '#BFDBFE' };
+    }
+    if (ord.pickupStatus === 'SCHEDULED' || ord.orderStatus === 'Ready for Pickup') {
+      return { text: 'Pickup Scheduled', bg: '#FDF4FF', color: '#86198F', border: '#F5D0FE' };
+    }
+    if (ord.awbNumber) {
+      return { text: 'AWB Assigned', bg: '#F0FDF4', color: '#166534', border: '#BBF7D0' };
+    }
+    if (ord.shipmentId) {
+      return { text: 'Shipment Created', bg: '#FEF9C3', color: '#854D0E', border: '#FEF08A' };
+    }
+    return { text: 'Not Created', bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' };
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate('/admin/login');
+  };
 
   return (
     <div className="section-padding" style={{ backgroundColor: 'var(--bg-primary)', minHeight: '85vh' }}>
@@ -385,60 +486,116 @@ export const AdminDashboard: React.FC = () => {
             </h1>
           </div>
 
-          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
             <button onClick={loadData} className="btn-secondary" style={{ padding: '0.5rem 1rem', fontSize: '0.8125rem' }}>
               <RotateCcw size={14} /> Refresh Data
             </button>
             <Link to="/shop" className="btn-secondary" style={{ padding: '0.5rem 1rem', fontSize: '0.8125rem' }}>
               View Store Front
             </Link>
+            <button
+              onClick={handleLogout}
+              className="btn-secondary"
+              style={{
+                padding: '0.5rem 1rem',
+                fontSize: '0.8125rem',
+                color: '#991B1B',
+                borderColor: '#FCA5A5',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.375rem',
+              }}
+              title="End Administrator Session"
+            >
+              <LogOut size={14} /> Logout
+            </button>
           </div>
         </div>
 
-        {/* Dashboard Stat Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
-          <div style={{ backgroundColor: '#FFFFFF', padding: '1.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>Total Revenue</span>
-              <TrendingUp size={20} color="var(--color-success)" />
+        {/* Dashboard Top Summary Cards (7 Metrics) */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+          {/* Card 1: Total Orders */}
+          <div style={{ backgroundColor: '#FFFFFF', padding: '1.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>Total Orders</span>
+              <ShoppingBag size={18} color="var(--color-gold-dark)" />
             </div>
-            <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--color-maroon)' }}>
+            <div style={{ fontSize: '1.625rem', fontWeight: 700, color: 'var(--color-maroon)' }}>
+              {totalOrdersCount}
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.2rem' }}>All recorded orders</div>
+          </div>
+
+          {/* Card 2: New Orders / Order Placed */}
+          <div style={{ backgroundColor: '#FFFFFF', padding: '1.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>New Orders</span>
+              <Clock size={18} color="#2563EB" />
+            </div>
+            <div style={{ fontSize: '1.625rem', fontWeight: 700, color: '#2563EB' }}>
+              {newOrdersCount}
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.2rem' }}>Awaiting preparation</div>
+          </div>
+
+          {/* Card 3: Processing Orders */}
+          <div style={{ backgroundColor: '#FFFFFF', padding: '1.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>Processing</span>
+              <RefreshCw size={18} color="#D97706" />
+            </div>
+            <div style={{ fontSize: '1.625rem', fontWeight: 700, color: '#D97706' }}>
+              {processingOrdersCount}
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.2rem' }}>Confirmed / Packing</div>
+          </div>
+
+          {/* Card 4: Dispatched / In Transit */}
+          <div style={{ backgroundColor: '#FFFFFF', padding: '1.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>In Transit</span>
+              <Truck size={18} color="#7C3AED" />
+            </div>
+            <div style={{ fontSize: '1.625rem', fontWeight: 700, color: '#7C3AED' }}>
+              {dispatchedOrdersCount}
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.2rem' }}>Dispatched with AWB</div>
+          </div>
+
+          {/* Card 5: Delivered Orders */}
+          <div style={{ backgroundColor: '#FFFFFF', padding: '1.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>Delivered</span>
+              <CheckCircle2 size={18} color="var(--color-success)" />
+            </div>
+            <div style={{ fontSize: '1.625rem', fontWeight: 700, color: 'var(--color-success)' }}>
+              {deliveredOrdersCount}
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.2rem' }}>Fulfilled orders</div>
+          </div>
+
+          {/* Card 6: Pending Payments */}
+          <div style={{ backgroundColor: '#FFFFFF', padding: '1.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>Pending Payments</span>
+              <AlertTriangle size={18} color="#DC2626" />
+            </div>
+            <div style={{ fontSize: '1.625rem', fontWeight: 700, color: '#DC2626' }}>
+              {pendingPaymentsCount}
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.2rem' }}>COD or unpaid prepaid</div>
+          </div>
+
+          {/* Card 7: Total Revenue */}
+          <div style={{ backgroundColor: '#FFFFFF', padding: '1.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>Total Revenue</span>
+              <TrendingUp size={18} color="var(--color-success)" />
+            </div>
+            <div style={{ fontSize: '1.625rem', fontWeight: 700, color: 'var(--color-maroon)' }}>
               ₹{totalSales.toLocaleString('en-IN')}
             </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>From recorded database orders</div>
-          </div>
-
-          <div style={{ backgroundColor: '#FFFFFF', padding: '1.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>Total Orders</span>
-              <ShoppingBag size={20} color="var(--color-gold-dark)" />
-            </div>
-            <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--color-maroon)' }}>
-              {orders.length} Orders
-            </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>Active customer orders in database</div>
-          </div>
-
-          <div style={{ backgroundColor: '#FFFFFF', padding: '1.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>Active Sarees</span>
-              <Package size={20} color="var(--color-maroon)" />
-            </div>
-            <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--color-maroon)' }}>
-              {activeProducts.length} Sarees
-            </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>Published in live store catalogue</div>
-          </div>
-
-          <div style={{ backgroundColor: '#FFFFFF', padding: '1.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>Low Stock Alert</span>
-              <AlertTriangle size={20} color="var(--color-danger)" />
-            </div>
-            <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--color-danger)' }}>
-              {lowStockProducts.length} Items
-            </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>Stock level ≤ 5 units</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.2rem' }}>From recorded database orders</div>
           </div>
         </div>
 
@@ -485,32 +642,59 @@ export const AdminDashboard: React.FC = () => {
                   </div>
 
                   {/* Search & Filter Controls */}
-                  <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                    <div style={{ position: 'relative' }}>
+                  <div style={{ display: 'flex', gap: '0.625rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    {/* Search Input */}
+                    <div style={{ position: 'relative', minWidth: '220px' }}>
                       <input
                         type="text"
-                        placeholder="Search order #, customer, phone"
+                        placeholder="Search #, name, phone, email, PIN"
                         value={orderSearchQuery}
                         onChange={(e) => setOrderSearchQuery(e.target.value)}
-                        style={{ padding: '0.4rem 0.75rem', paddingLeft: '2rem', fontSize: '0.8125rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}
+                        style={{ width: '100%', padding: '0.45rem 0.75rem', paddingLeft: '2rem', fontSize: '0.8125rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}
                       />
                       <Search size={14} style={{ position: 'absolute', left: '0.6rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)' }} />
                     </div>
 
+                    {/* Order Status Filter */}
                     <select
                       value={orderStatusFilter}
                       onChange={(e) => setOrderStatusFilter(e.target.value)}
-                      style={{ padding: '0.4rem 0.75rem', fontSize: '0.8125rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}
+                      style={{ padding: '0.45rem 0.75rem', fontSize: '0.8125rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', backgroundColor: '#FFFFFF' }}
                     >
-                      <option value="All">All Statuses</option>
+                      <option value="All">All Order Statuses</option>
                       <option value="Order Placed">Order Placed</option>
                       <option value="Payment Confirmed">Payment Confirmed</option>
                       <option value="Processing">Processing</option>
                       <option value="Ready for Pickup">Ready for Pickup</option>
+                      <option value="Dispatched">Dispatched</option>
                       <option value="In Transit">In Transit</option>
                       <option value="Out for Delivery">Out for Delivery</option>
                       <option value="Delivered">Delivered</option>
                       <option value="Cancelled">Cancelled</option>
+                    </select>
+
+                    {/* Payment Status Filter */}
+                    <select
+                      value={paymentStatusFilter}
+                      onChange={(e) => setPaymentStatusFilter(e.target.value)}
+                      style={{ padding: '0.45rem 0.75rem', fontSize: '0.8125rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', backgroundColor: '#FFFFFF' }}
+                    >
+                      <option value="All">All Payment Statuses</option>
+                      <option value="Paid">Paid</option>
+                      <option value="Pending">Pending</option>
+                      <option value="Failed">Failed</option>
+                    </select>
+
+                    {/* Date Range Filter */}
+                    <select
+                      value={dateFilter}
+                      onChange={(e) => setDateFilter(e.target.value)}
+                      style={{ padding: '0.45rem 0.75rem', fontSize: '0.8125rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', backgroundColor: '#FFFFFF' }}
+                    >
+                      <option value="All">All Dates</option>
+                      <option value="Today">Today</option>
+                      <option value="7days">Past 7 Days</option>
+                      <option value="30days">Past 30 Days</option>
                     </select>
                   </div>
                 </div>
@@ -519,93 +703,178 @@ export const AdminDashboard: React.FC = () => {
                   <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
                     <thead>
                       <tr style={{ backgroundColor: 'var(--bg-primary)', borderBottom: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}>
-                        <th style={{ padding: '0.75rem 1rem' }}>Order #</th>
-                        <th style={{ padding: '0.75rem 1rem' }}>Customer & Delivery</th>
+                        <th style={{ padding: '0.75rem 1rem' }}>Order # & Date</th>
+                        <th style={{ padding: '0.75rem 1rem' }}>Customer & Contact</th>
+                        <th style={{ padding: '0.75rem 1rem' }}>Delivery Address</th>
+                        <th style={{ padding: '0.75rem 1rem' }}>Products</th>
                         <th style={{ padding: '0.75rem 1rem' }}>Payment</th>
                         <th style={{ padding: '0.75rem 1rem' }}>Total</th>
-                        <th style={{ padding: '0.75rem 1rem' }}>Fulfillment Status</th>
-                        <th style={{ padding: '0.75rem 1rem' }}>Courier / AWB</th>
+                        <th style={{ padding: '0.75rem 1rem' }}>Order Status</th>
+                        <th style={{ padding: '0.75rem 1rem' }}>Shipping Status</th>
                         <th style={{ padding: '0.75rem 1rem' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredOrders.length === 0 ? (
                         <tr>
-                          <td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>
+                          <td colSpan={9} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--color-text-muted)' }}>
                             No orders found matching the filter criteria.
                           </td>
                         </tr>
                       ) : (
-                        filteredOrders.map((ord) => (
-                          <tr key={ord.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                            <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: 'var(--color-maroon)' }}>
-                              #{ord.orderNumber}
-                            </td>
-                            <td style={{ padding: '0.75rem 1rem' }}>
-                              <div style={{ fontWeight: 600 }}>{ord.shippingAddress?.fullName || 'Customer'}</div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                {ord.shippingAddress?.phone} • {ord.shippingAddress?.city}, {ord.shippingAddress?.pincode}
-                              </div>
-                            </td>
-                            <td style={{ padding: '0.75rem 1rem' }}>
-                              <div>{ord.paymentMethod}</div>
-                              <span style={{ fontSize: '0.75rem', color: ord.paymentStatus === 'Paid' ? 'var(--color-success)' : 'var(--color-gold-dark)', fontWeight: 600 }}>
-                                {ord.paymentStatus}
-                              </span>
-                            </td>
-                            <td style={{ padding: '0.75rem 1rem', fontWeight: 700 }}>
-                              ₹{(ord.finalTotal || 0).toLocaleString('en-IN')}
-                            </td>
-                            <td style={{ padding: '0.75rem 1rem' }}>
-                              <select
-                                value={ord.orderStatus}
-                                onChange={(e) => handleStatusChange(ord.id || ord.orderNumber, e.target.value as OrderStatus)}
-                                style={{
-                                  padding: '0.35rem 0.6rem',
-                                  borderRadius: 'var(--radius-sm)',
-                                  border: '1px solid var(--color-border)',
-                                  fontSize: '0.8125rem',
-                                  fontWeight: 600,
-                                  backgroundColor: ord.orderStatus === 'Delivered' ? '#ECFDF5' : ord.orderStatus === 'Cancelled' ? '#FEF2F2' : '#FFFFFF',
-                                  color: ord.orderStatus === 'Delivered' ? '#065F46' : ord.orderStatus === 'Cancelled' ? '#991B1B' : 'var(--color-maroon)'
-                                }}
-                              >
-                                <option value="Order Placed">Order Placed</option>
-                                <option value="Payment Confirmed">Payment Confirmed</option>
-                                <option value="Processing">Processing</option>
-                                <option value="Ready for Pickup">Ready for Pickup</option>
-                                <option value="In Transit">In Transit</option>
-                                <option value="Out for Delivery">Out for Delivery</option>
-                                <option value="Delivered">Delivered</option>
-                                <option value="Cancelled">Cancelled</option>
-                              </select>
-                            </td>
-                            <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem' }}>
-                              {ord.awbNumber ? (
-                                <a
-                                  href={ord.trackingUrl || `https://shiprocket.co/tracking/${ord.awbNumber}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  style={{ color: 'var(--color-maroon)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
+                        filteredOrders.map((ord) => {
+                          const shipBadge = getShippingBadge(ord);
+                          return (
+                            <tr key={ord.id || ord.orderNumber} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                              {/* Order Number & Date */}
+                              <td style={{ padding: '0.75rem 1rem' }}>
+                                <div style={{ fontWeight: 700, color: 'var(--color-maroon)' }}>
+                                  #{ord.orderNumber}
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.15rem' }}>
+                                  {new Date(ord.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                </div>
+                              </td>
+
+                              {/* Customer & Contact */}
+                              <td style={{ padding: '0.75rem 1rem' }}>
+                                <div style={{ fontWeight: 600 }}>{ord.shippingAddress?.fullName || 'Customer'}</div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                  📞 {ord.shippingAddress?.phone || 'No phone'}
+                                </div>
+                                {(ord.guestEmail || ord.shippingAddress?.email) && (
+                                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                    ✉️ {ord.guestEmail || ord.shippingAddress?.email}
+                                  </div>
+                                )}
+                              </td>
+
+                              {/* Delivery Address & PIN */}
+                              <td style={{ padding: '0.75rem 1rem', maxWidth: '200px' }}>
+                                <div style={{ fontSize: '0.8125rem', color: '#374151', lineHeight: 1.3 }}>
+                                  {ord.shippingAddress?.city}, {ord.shippingAddress?.state}
+                                </div>
+                                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-maroon)', marginTop: '0.15rem' }}>
+                                  PIN: {ord.shippingAddress?.pincode}
+                                </div>
+                              </td>
+
+                              {/* Ordered Products Preview */}
+                              <td style={{ padding: '0.75rem 1rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  {ord.items && ord.items[0]?.image && (
+                                    <img
+                                      src={ord.items[0].image}
+                                      alt=""
+                                      style={{ width: '32px', height: '40px', objectFit: 'cover', borderRadius: '3px', border: '1px solid var(--color-border)' }}
+                                    />
+                                  )}
+                                  <div style={{ fontSize: '0.75rem' }}>
+                                    <div style={{ fontWeight: 600 }}>{ord.items?.length || 0} item(s)</div>
+                                    <div style={{ color: 'var(--color-text-muted)' }}>
+                                      {ord.items?.reduce((s, it) => s + (it.quantity || 1), 0)} pcs total
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Payment */}
+                              <td style={{ padding: '0.75rem 1rem' }}>
+                                <div style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{ord.paymentMethod}</div>
+                                <span
+                                  style={{
+                                    fontSize: '0.6875rem',
+                                    padding: '0.15rem 0.4rem',
+                                    borderRadius: '4px',
+                                    fontWeight: 700,
+                                    display: 'inline-block',
+                                    marginTop: '0.2rem',
+                                    backgroundColor: ord.paymentStatus === 'Paid' ? '#ECFDF5' : ord.paymentStatus === 'Failed' ? '#FEF2F2' : '#FFFBEB',
+                                    color: ord.paymentStatus === 'Paid' ? '#065F46' : ord.paymentStatus === 'Failed' ? '#991B1B' : '#92400E',
+                                    border: `1px solid ${ord.paymentStatus === 'Paid' ? '#A7F3D0' : ord.paymentStatus === 'Failed' ? '#FECACA' : '#FDE68A'}`,
+                                  }}
                                 >
-                                  {ord.awbNumber} <ExternalLink size={12} />
-                                </a>
-                              ) : (
-                                <span style={{ color: 'var(--color-text-muted)' }}>Pending AWB</span>
-                              )}
-                            </td>
-                            <td style={{ padding: '0.75rem 1rem' }}>
-                              <button
-                                type="button"
-                                onClick={() => handleOpenOrderModal(ord)}
-                                className="btn-secondary"
-                                style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
-                              >
-                                <Truck size={14} /> Dispatch
-                              </button>
-                            </td>
-                          </tr>
-                        ))
+                                  {ord.paymentStatus}
+                                </span>
+                              </td>
+
+                              {/* Total Amount */}
+                              <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: 'var(--color-maroon)' }}>
+                                ₹{(ord.finalTotal || 0).toLocaleString('en-IN')}
+                              </td>
+
+                              {/* Order Status Select */}
+                              <td style={{ padding: '0.75rem 1rem' }}>
+                                <select
+                                  value={ord.orderStatus}
+                                  onChange={(e) => handleStatusChange(ord.id || ord.orderNumber, e.target.value as OrderStatus)}
+                                  style={{
+                                    padding: '0.35rem 0.5rem',
+                                    borderRadius: 'var(--radius-sm)',
+                                    border: '1px solid var(--color-border)',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 600,
+                                    backgroundColor: ord.orderStatus === 'Delivered' ? '#ECFDF5' : ord.orderStatus === 'Cancelled' ? '#FEF2F2' : '#FFFFFF',
+                                    color: ord.orderStatus === 'Delivered' ? '#065F46' : ord.orderStatus === 'Cancelled' ? '#991B1B' : 'var(--color-maroon)'
+                                  }}
+                                >
+                                  <option value="Order Placed">Order Placed</option>
+                                  <option value="Payment Confirmed">Payment Confirmed</option>
+                                  <option value="Processing">Processing</option>
+                                  <option value="Ready for Pickup">Ready for Pickup</option>
+                                  <option value="Dispatched">Dispatched</option>
+                                  <option value="In Transit">In Transit</option>
+                                  <option value="Out for Delivery">Out for Delivery</option>
+                                  <option value="Delivered">Delivered</option>
+                                  <option value="Cancelled">Cancelled</option>
+                                </select>
+                              </td>
+
+                              {/* Shipping Status & AWB */}
+                              <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem' }}>
+                                <span
+                                  style={{
+                                    fontSize: '0.6875rem',
+                                    padding: '0.15rem 0.45rem',
+                                    borderRadius: '4px',
+                                    fontWeight: 600,
+                                    display: 'inline-block',
+                                    backgroundColor: shipBadge.bg,
+                                    color: shipBadge.color,
+                                    border: `1px solid ${shipBadge.border}`,
+                                    marginBottom: ord.awbNumber ? '0.25rem' : '0'
+                                  }}
+                                >
+                                  {shipBadge.text}
+                                </span>
+                                {ord.awbNumber && (
+                                  <div>
+                                    <a
+                                      href={ord.trackingUrl || `https://shiprocket.co/tracking/${ord.awbNumber}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      style={{ color: 'var(--color-maroon)', fontWeight: 600, fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}
+                                    >
+                                      {ord.awbNumber} <ExternalLink size={10} />
+                                    </a>
+                                  </div>
+                                )}
+                              </td>
+
+                              {/* Actions */}
+                              <td style={{ padding: '0.75rem 1rem' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenOrderModal(ord)}
+                                  className="btn-secondary"
+                                  style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
+                                >
+                                  <FileText size={13} /> View Details
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>

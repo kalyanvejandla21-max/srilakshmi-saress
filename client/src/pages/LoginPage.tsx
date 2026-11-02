@@ -95,20 +95,16 @@ export const LoginPage: React.FC = () => {
             </button>
           </form>
 
-          {/* Secure Admin Portal Notice */}
-          <div style={{ marginTop: '1.5rem', padding: '0.875rem', backgroundColor: 'var(--bg-primary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', color: 'var(--color-maroon)', fontWeight: 600, marginBottom: '0.25rem' }}>
-              <ShieldCheck size={16} color="var(--color-gold-dark)" /> Store Administration
-            </div>
-            <div>
-              Store owners can sign in with their registered admin email (<code>admin@srilakshmisarees.com</code>) to access the backend management dashboard.
-            </div>
-          </div>
-
           <div style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
             Don't have an account?{' '}
             <Link to="/register" style={{ color: 'var(--color-maroon)', fontWeight: 600 }}>
               Create Account
+            </Link>
+          </div>
+
+          <div style={{ textAlign: 'center', marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--color-border)', fontSize: '0.75rem' }}>
+            <Link to="/admin/login" style={{ color: '#8C827A', textDecoration: 'none' }}>
+              Store Staff & Administration Portal →
             </Link>
           </div>
         </div>

@@ -58,6 +58,7 @@ export interface ShippingAddress {
   id?: string;
   fullName: string;
   phone: string;
+  email?: string;
   pincode: string;
   houseNo: string;
   street: string;
@@ -82,6 +83,7 @@ export type OrderStatus =
   | 'Payment Confirmed'
   | 'Processing'
   | 'Ready for Pickup'
+  | 'Dispatched'
   | 'Picked Up'
   | 'In Transit'
   | 'Out for Delivery'
@@ -109,9 +111,16 @@ export interface Order {
   paymentStatus: PaymentStatus;
   orderStatus: OrderStatus;
   courierName?: string;
+  courierPartner?: string;
   awbNumber?: string;
+  trackingNumber?: string;
   trackingUrl?: string;
   shipmentId?: string;
+  shipping?: {
+    awbNumber?: string;
+    courierName?: string;
+    shipmentId?: string;
+  };
   shiprocketOrderId?: string;
   shipmentStatus?: string;
   pickupTokenNumber?: string;
