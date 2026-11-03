@@ -5,6 +5,7 @@ import { ProductCard } from '../components/product/ProductCard';
 import { QuickViewModal } from '../components/product/QuickViewModal';
 import { FloralHero } from '../components/hero/FloralHero';
 import { CategoryCarousel } from '../components/category/CategoryCarousel';
+import { SriLakshmiEdit } from '../components/home/SriLakshmiEdit';
 import { Product } from '../types';
 import { getStoredProducts, fetchProductsFromServer } from '../services/api';
 
@@ -76,6 +77,9 @@ export const HomePage: React.FC = () => {
           <CategoryCarousel categories={categories} />
         </div>
       </section>
+
+      {/* NEW: THE SRI LAKSHMI EDIT — ANIMATED SAREE SHOWCASE */}
+      <SriLakshmiEdit products={products} />
 
       {/* D. NEW ARRIVALS */}
       <section className="section-padding" style={{ backgroundColor: '#FFFFFF' }}>
