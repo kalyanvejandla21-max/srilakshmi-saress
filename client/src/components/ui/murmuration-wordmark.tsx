@@ -1,13 +1,27 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { ArrowRight } from 'lucide-react';
 import './murmuration-wordmark.css';
+
+export interface MurmurationPalette {
+  skyTop?: string;
+  skyLow?: string;
+  sun?: string;
+  ink?: string;
+}
 
 export interface MurmurationWordmarkProps {
   /** Optional callback fired when intro finishes its sequence or user skips */
   onComplete?: () => void;
-  /** Primary brand text line 1 (default: 'SRI LAKSHMI') */
+  /** Full brand phrase (default: 'SRI LAKSHMI SAREES') */
+  word?: string;
+  /** Color palette configuration for monochromatic styling */
+  palette?: MurmurationPalette;
+  /** Whether to show landscape reeds (default: false) */
+  reeds?: boolean;
+  /** Whether mouse/touch interaction affects flock (default: false) */
+  interactive?: boolean;
+  /** Optional override for line 1 text (default: 'SRI LAKSHMI') */
   textLine1?: string;
-  /** Secondary brand text line 2 (default: 'SAREES') */
+  /** Optional override for line 2 text (default: 'SAREES') */
   textLine2?: string;
 }
 
@@ -24,22 +38,35 @@ interface Bird {
   wingSpeed: number;
   maxSpeed: number;
   color: string;
-  goldShine: boolean;
+  scatterVx: number;
+  scatterVy: number;
 }
 
-// Ease out cubic
+// Cubic ease out
 const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
+// Quad ease in
+const easeInQuad = (t: number): number => t * t;
 
 /**
  * MurmurationWordmark
- * Cinematic opening introduction overlay for Sri Lakshmi Sarees.
- * Thousands of birds murmurate organically in free flight before converging
- * into the luxury two-line brand wordmark "SRI LAKSHMI SAREES".
+ * Clean, cinematic monochrome opening introduction overlay for Sri Lakshmi Sarees.
+ * Thousands of pure white birds (#FFFFFF / #F5F5F5) fly in organic murmuration
+ * against an obsidian black background (#000000), converge dramatically into
+ * "SRI LAKSHMI SAREES", hold the formation, and smoothly scatter into the website.
  */
 export const MurmurationWordmark: React.FC<MurmurationWordmarkProps> = ({
   onComplete,
-  textLine1 = 'SRI LAKSHMI',
-  textLine2 = 'SAREES',
+  word = 'SRI LAKSHMI SAREES',
+  palette = {
+    skyTop: '#000000',
+    skyLow: '#000000',
+    sun: '#000000',
+    ink: '#F5F5F5',
+  },
+  reeds = false,
+  interactive = false,
+  textLine1,
+  textLine2,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -50,12 +77,15 @@ export const MurmurationWordmark: React.FC<MurmurationWordmarkProps> = ({
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const isCompletedRef = useRef<boolean>(false);
 
+  // Derive lines from word or explicit overrides
+  const resolvedLine1 = textLine1 || (word === 'SRI LAKSHMI SAREES' ? 'SRI LAKSHMI' : word.split(' ').slice(0, 2).join(' '));
+  const resolvedLine2 = textLine2 || (word === 'SRI LAKSHMI SAREES' ? 'SAREES' : word.split(' ').slice(2).join(' '));
+
   // Safe trigger for completion
   const handleFinish = useCallback(() => {
     if (isCompletedRef.current) return;
     isCompletedRef.current = true;
 
-    // Set session storage flag so it won't replay on page navigation
     try {
       sessionStorage.setItem('sriLakshmiIntroSeen', 'true');
     } catch {
@@ -66,7 +96,7 @@ export const MurmurationWordmark: React.FC<MurmurationWordmarkProps> = ({
 
     const timer = setTimeout(() => {
       if (onComplete) onComplete();
-    }, 750);
+    }, 800);
     timersRef.current.push(timer);
   }, [onComplete]);
 
@@ -77,7 +107,6 @@ export const MurmurationWordmark: React.FC<MurmurationWordmarkProps> = ({
     setIsReducedMotion(media.matches);
 
     if (media.matches) {
-      // Short display for reduced motion, then finish
       const t = setTimeout(() => {
         handleFinish();
       }, 1600);
@@ -102,17 +131,18 @@ export const MurmurationWordmark: React.FC<MurmurationWordmarkProps> = ({
     ctx.scale(dpr, dpr);
 
     const isMobile = width < 768;
-    // Responsive bird counts
+    // Responsive bird counts for high density & smooth 60fps
     const BIRD_COUNT = isMobile ? 850 : 2400;
 
-    // Palette: Deep Ink Burgundy, Royal Crimson, Antique Gold, Warm Ivory
-    const PALETTE = [
-      '#1C070D',
-      '#3D0916',
-      '#6A1024',
-      '#C5A059',
-      '#E6CA65',
-      '#FAF8F5',
+    // Premium Monochrome White Palette
+    const baseInk = palette.ink || '#F5F5F5';
+    const WHITE_PALETTE = [
+      '#FFFFFF',
+      '#FDFDFD',
+      '#F8F8F8',
+      baseInk,
+      '#ECECEC',
+      '#E5E5E5',
     ];
 
     // 1. Text Target Sampling for Two Lines: "SRI LAKSHMI" & "SAREES"
@@ -126,23 +156,23 @@ export const MurmurationWordmark: React.FC<MurmurationWordmarkProps> = ({
       octx.fillStyle = '#000000';
       octx.fillRect(0, 0, w, h);
 
-      // Line 1 Font: Serif Royal
-      const line1Size = Math.round(isMobile ? Math.min(w * 0.11, 40) : Math.min(w * 0.076, 76));
-      octx.font = `600 ${line1Size}px "Playfair Display", Georgia, serif`;
+      // Line 1 Font: Bold Serif Royal
+      const line1Size = Math.round(isMobile ? Math.min(w * 0.115, 46) : Math.min(w * 0.082, 84));
+      octx.font = `700 ${line1Size}px "Playfair Display", Georgia, serif`;
       octx.fillStyle = '#FFFFFF';
       octx.textAlign = 'center';
       octx.textBaseline = 'middle';
 
-      // Line 2 Font: Wide Spaced Sans
-      const line2Size = Math.round(isMobile ? Math.min(w * 0.055, 20) : Math.min(w * 0.038, 38));
-      const lineGap = line1Size * 0.62;
+      // Line 2 Font: Wide Spaced Modern Sans
+      const line2Size = Math.round(isMobile ? Math.min(w * 0.058, 22) : Math.min(w * 0.042, 42));
+      const lineGap = line1Size * 0.58;
 
       const totalH = line1Size + lineGap + line2Size;
-      const centerY = h * 0.47;
+      const centerY = h * 0.48;
       const line1Y = centerY - totalH / 2 + line1Size / 2;
       const line2Y = line1Y + line1Size / 2 + lineGap + line2Size / 2;
 
-      // Draw Line 1 with manual tracking
+      // Draw Line 1 with tracking
       const drawTrackedText = (
         context: CanvasRenderingContext2D,
         text: string,
@@ -167,11 +197,11 @@ export const MurmurationWordmark: React.FC<MurmurationWordmarkProps> = ({
       };
 
       // Draw Line 1: SRI LAKSHMI
-      drawTrackedText(octx, textLine1, w / 2, line1Y, isMobile ? 3 : 7);
+      drawTrackedText(octx, resolvedLine1, w / 2, line1Y, isMobile ? 3 : 8);
 
       // Draw Line 2: SAREES
       octx.font = `600 ${line2Size}px "Plus Jakarta Sans", system-ui, sans-serif`;
-      drawTrackedText(octx, textLine2, w / 2, line2Y, isMobile ? 6 : 14);
+      drawTrackedText(octx, resolvedLine2, w / 2, line2Y, isMobile ? 8 : 18);
 
       // Sample pixels
       const imgData = octx.getImageData(0, 0, w, h).data;
@@ -208,63 +238,70 @@ export const MurmurationWordmark: React.FC<MurmurationWordmarkProps> = ({
     // 2. Initialize Bird Flock
     const birds: Bird[] = [];
     const spawnCenterX = width * 0.5;
-    const spawnCenterY = height * 0.45;
+    const spawnCenterY = height * 0.48;
 
     for (let i = 0; i < BIRD_COUNT; i++) {
       const angle = Math.random() * Math.PI * 2;
       const radius = Math.random() * Math.min(width, height) * 0.45;
       const target = targets[i] || { x: spawnCenterX, y: spawnCenterY };
 
-      // Distribute luxury colors
-      const isGold = i % 5 === 0 || i % 7 === 0;
-      const color = isGold
-        ? PALETTE[3 + (i % 3)] // Antique gold / warm ivory
-        : PALETTE[i % 3]; // Deep burgundy inks
+      // Outward angle for dispersion
+      const scatterAngle = Math.atan2(target.y - spawnCenterY, target.x - spawnCenterX) + (Math.random() - 0.5) * 0.8;
+      const scatterSpd = 5.5 + Math.random() * 7.5;
 
       birds.push({
         x: spawnCenterX + Math.cos(angle) * radius,
         y: spawnCenterY + Math.sin(angle) * radius,
-        vx: (Math.random() - 0.5) * 4,
-        vy: (Math.random() - 0.5) * 4,
+        vx: (Math.random() - 0.5) * 4.5,
+        vy: (Math.random() - 0.5) * 4.5,
         targetX: target.x,
         targetY: target.y,
         hasTarget: true,
         size: isMobile ? 1.8 + Math.random() * 1.2 : 2.2 + Math.random() * 1.6,
         wingPhase: Math.random() * Math.PI * 2,
         wingSpeed: 0.16 + Math.random() * 0.12,
-        maxSpeed: 4.5 + Math.random() * 2.5,
-        color,
-        goldShine: isGold,
+        maxSpeed: 4.8 + Math.random() * 2.5,
+        color: WHITE_PALETTE[i % WHITE_PALETTE.length],
+        scatterVx: Math.cos(scatterAngle) * scatterSpd,
+        scatterVy: Math.sin(scatterAngle) * scatterSpd,
       });
     }
 
     // 3. Animation Timeline (Seconds)
+    // 0.0s - 2.0s: Free Flight swirling across the black screen
+    // 2.0s - 4.0s: Dramatic convergence into "SRI LAKSHMI SAREES"
+    // 4.0s - 5.6s: Hold brand name clearly and boldly
+    // 5.6s - 6.8s: Smooth scatter / dispersion into distance
+    // 6.8s+: Smooth fade exit into the website
     const startTime = performance.now();
-    const FREE_FLIGHT_DURATION = 2.2; // Organic flocking
-    const CONVERGE_DURATION = 2.0; // Birds form the words
-    const HOLD_DURATION = 1.8; // Hold completed wordmark
-    const TOTAL_SEQUENCE_TIME = FREE_FLIGHT_DURATION + CONVERGE_DURATION + HOLD_DURATION; // ~6.0s
+    const FREE_FLIGHT_DURATION = 2.0;
+    const CONVERGE_DURATION = 2.0;
+    const HOLD_DURATION = 1.6;
+    const SCATTER_DURATION = 1.2;
+    const SCATTER_START = FREE_FLIGHT_DURATION + CONVERGE_DURATION + HOLD_DURATION; // 5.6s
+    const TOTAL_SEQUENCE_TIME = SCATTER_START + SCATTER_DURATION; // 6.8s
 
     let isRunning = true;
+    let hasTriggeredFinish = false;
 
-    // Draw single bird silhouette (V-wing in flight)
+    // Draw single pure white bird silhouette (V-wing in flight)
     const drawBird = (
       bctx: CanvasRenderingContext2D,
       bird: Bird,
       formationWeight: number
     ) => {
-      const { x, y, vx, vy, size, wingPhase, color, goldShine } = bird;
+      const { x, y, vx, vy, size, wingPhase, color } = bird;
 
-      // Heading angle from velocity
       const heading = Math.atan2(vy, vx);
-      const wingSpan = size * (1.6 + formationWeight * 0.4);
+      const wingSpan = size * (1.6 + formationWeight * 0.35);
       const flap = Math.sin(wingPhase) * (size * 0.95);
 
       bctx.save();
       bctx.translate(x, y);
       bctx.rotate(heading);
 
-      bctx.fillStyle = formationWeight > 0.5 && goldShine ? '#E6CA65' : color;
+      // Pure white with high contrast against black
+      bctx.fillStyle = formationWeight > 0.7 ? '#FFFFFF' : color;
       bctx.beginPath();
       // Left Wing
       bctx.moveTo(-size * 0.6, 0);
@@ -286,66 +323,85 @@ export const MurmurationWordmark: React.FC<MurmurationWordmarkProps> = ({
 
       const elapsed = (now - startTime) / 1000;
 
-      // Clear Canvas with subtle fade trail
-      ctx.clearRect(0, 0, width, height);
+      // Clean, deep monochrome black background
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, width, height);
 
-      // Determine Formation Progress (0 to 1)
+      // Determine Timeline State
+      const isFreeFlight = elapsed < FREE_FLIGHT_DURATION;
+      const isConverging = elapsed >= FREE_FLIGHT_DURATION && elapsed < (FREE_FLIGHT_DURATION + CONVERGE_DURATION);
+      const isHolding = elapsed >= (FREE_FLIGHT_DURATION + CONVERGE_DURATION) && elapsed < SCATTER_START;
+      const isScattering = elapsed >= SCATTER_START;
+
       let formationProgress = 0;
-      if (elapsed > FREE_FLIGHT_DURATION) {
+      if (isConverging) {
         formationProgress = Math.min(1, (elapsed - FREE_FLIGHT_DURATION) / CONVERGE_DURATION);
+      } else if (isHolding) {
+        formationProgress = 1;
+      } else if (isScattering) {
+        formationProgress = Math.max(0, 1 - (elapsed - SCATTER_START) / 0.35);
       }
       const formationWeight = easeOutCubic(formationProgress);
 
-      // Flocking flow field forces
+      const scatterProgress = isScattering
+        ? Math.min(1, (elapsed - SCATTER_START) / SCATTER_DURATION)
+        : 0;
+
+      // Flocking flow field forces during free flight
       const time = elapsed * 1.5;
-      const swirlX = Math.cos(time * 0.4) * width * 0.15;
-      const swirlY = Math.sin(time * 0.5) * height * 0.12;
+      const swirlX = Math.cos(time * 0.4) * width * 0.16;
+      const swirlY = Math.sin(time * 0.5) * height * 0.13;
 
       // Update & Draw Each Bird
       for (let i = 0; i < birds.length; i++) {
         const b = birds[i];
-        b.wingPhase += b.wingSpeed;
+        b.wingPhase += isScattering ? 0.28 : b.wingSpeed;
 
-        if (formationWeight < 0.98) {
-          // Free Flight Physics (Organic Murmuration Swirl)
+        if (isScattering) {
+          // Phase 4: Smooth Scatter / Dispersal Outward
+          const scatterEase = easeInQuad(scatterProgress);
+          b.vx += b.scatterVx * (0.08 + scatterEase * 0.15);
+          b.vy += b.scatterVy * (0.08 + scatterEase * 0.15);
+          b.x += b.vx;
+          b.y += b.vy;
+        } else if (formationWeight < 0.98) {
+          // Phase 1: Free Flight Swirl Currents
           const angle =
             Math.sin(b.x * 0.003 + time * 0.5) * Math.cos(b.y * 0.003 + time * 0.4) * Math.PI * 2;
-          const flowForceX = Math.cos(angle) * 0.35;
-          const flowForceY = Math.sin(angle) * 0.35;
+          const flowForceX = Math.cos(angle) * 0.38;
+          const flowForceY = Math.sin(angle) * 0.38;
 
-          // Pull towards dynamic flock center
           const dxToCenter = (spawnCenterX + swirlX) - b.x;
           const dyToCenter = (spawnCenterY + swirlY) - b.y;
           const distToCenter = Math.hypot(dxToCenter, dyToCenter) + 0.1;
-          const centerPull = 0.08;
+          const centerPull = 0.085;
 
           b.vx += flowForceX + (dxToCenter / distToCenter) * centerPull;
           b.vy += flowForceY + (dyToCenter / distToCenter) * centerPull;
         }
 
         // Target Attraction Force (Ramps up during converge phase)
-        if (formationWeight > 0.01) {
+        if (!isScattering && formationWeight > 0.01) {
           const dx = b.targetX - b.x;
           const dy = b.targetY - b.y;
-          const dist = Math.hypot(dx, dy);
 
-          // Spring force towards letter target
-          const springStrength = 0.065 * formationWeight;
+          // Magnetic attraction towards letter targets
+          const springStrength = 0.075 * formationWeight;
           b.vx += dx * springStrength;
           b.vy += dy * springStrength;
 
-          // Higher damping when approaching wordmark for crisp lock
-          const damping = 0.88 - formationWeight * 0.08;
+          // Damping for crisp wordmark lock
+          const damping = 0.86 - formationWeight * 0.09;
           b.vx *= damping;
           b.vy *= damping;
 
-          // Subtle alive micro-flutter even when settled
+          // Subtle living micro-flutter during hold phase
           if (formationWeight > 0.95) {
             b.x = b.targetX + Math.sin(b.wingPhase) * 0.45;
             b.y = b.targetY + Math.cos(b.wingPhase) * 0.35;
           }
-        } else {
-          // Normal flight damping & speed clamp
+        } else if (!isScattering) {
+          // Normal free flight damping
           b.vx *= 0.96;
           b.vy *= 0.96;
           const currentSpeed = Math.hypot(b.vx, b.vy);
@@ -355,14 +411,14 @@ export const MurmurationWordmark: React.FC<MurmurationWordmarkProps> = ({
           }
         }
 
-        // Apply velocity
-        if (formationWeight < 0.95) {
+        // Apply velocity when not firmly locked
+        if (!isHolding) {
           b.x += b.vx;
           b.y += b.vy;
         }
 
-        // Boundary wrap during free flight
-        if (formationWeight < 0.2) {
+        // Boundary wrap during early free flight only
+        if (formationWeight < 0.2 && !isScattering) {
           if (b.x < -40) b.x = width + 40;
           if (b.x > width + 40) b.x = -40;
           if (b.y < -40) b.y = height + 40;
@@ -372,29 +428,15 @@ export const MurmurationWordmark: React.FC<MurmurationWordmarkProps> = ({
         drawBird(ctx, b, formationWeight);
       }
 
-      // Add radiant gold sheen over formed wordmark during hold phase
-      if (formationWeight > 0.75) {
-        const glowOpacity = Math.min(0.45, (formationWeight - 0.75) * 1.8);
-        ctx.save();
-        const radGrad = ctx.createRadialGradient(
-          width / 2,
-          height * 0.47,
-          20,
-          width / 2,
-          height * 0.47,
-          width * 0.4
-        );
-        radGrad.addColorStop(0, `rgba(230, 202, 101, ${glowOpacity * 0.35})`);
-        radGrad.addColorStop(0.5, `rgba(197, 160, 89, ${glowOpacity * 0.15})`);
-        radGrad.addColorStop(1, 'transparent');
-        ctx.fillStyle = radGrad;
-        ctx.fillRect(0, 0, width, height);
-        ctx.restore();
+      // Smooth trigger for exit fade during scatter phase
+      if (isScattering && scatterProgress > 0.45 && !hasTriggeredFinish) {
+        hasTriggeredFinish = true;
+        handleFinish();
       }
 
       // Check if sequence completed
       if (elapsed >= TOTAL_SEQUENCE_TIME) {
-        handleFinish();
+        if (!hasTriggeredFinish) handleFinish();
       } else {
         animFrameIdRef.current = requestAnimationFrame(loop);
       }
@@ -425,7 +467,7 @@ export const MurmurationWordmark: React.FC<MurmurationWordmarkProps> = ({
       if (animFrameIdRef.current) cancelAnimationFrame(animFrameIdRef.current);
       window.removeEventListener('resize', handleResize);
     };
-  }, [isReducedMotion, handleFinish, textLine1, textLine2]);
+  }, [isReducedMotion, handleFinish, resolvedLine1, resolvedLine2, palette]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -441,43 +483,22 @@ export const MurmurationWordmark: React.FC<MurmurationWordmarkProps> = ({
       className={`murmuration-intro-overlay ${isExiting ? 'is-exiting' : ''}`}
       role="region"
       aria-label="Sri Lakshmi Sarees Opening Introduction"
+      style={{ backgroundColor: '#000000' }}
     >
-      {/* Ambient Backdrop Sheen */}
-      <div className="murmuration-backdrop-glow" aria-hidden="true" />
-
-      {/* Cinematic Film Grain Overlay */}
+      {/* Cinematic Monochrome Film Grain Overlay */}
       <div className="murmuration-film-grain" aria-hidden="true" />
-
-      {/* Subtle Top Crest Eyebrow */}
-      <div className="murmuration-top-crest" aria-hidden="true">
-        <span>HERITAGE ATELIER</span>
-        <span className="murmuration-crest-dot">✦</span>
-        <span>ESTD 1984</span>
-      </div>
 
       {/* Flocking Canvas or Reduced Motion Fallback */}
       {!isReducedMotion ? (
         <canvas ref={canvasRef} className="murmuration-canvas" />
       ) : (
         <div className="murmuration-reduced-content">
-          <div className="murmuration-reduced-line1">{textLine1}</div>
-          <div className="murmuration-reduced-line2">{textLine2}</div>
+          <div className="murmuration-reduced-line1">{resolvedLine1}</div>
+          <div className="murmuration-reduced-line2">{resolvedLine2}</div>
         </div>
       )}
-
-      {/* Accessible Skip Button */}
-      <button
-        type="button"
-        className="murmuration-skip-btn"
-        onClick={handleFinish}
-        aria-label="Skip cinematic introduction"
-      >
-        <span>Skip Intro</span>
-        <ArrowRight size={14} />
-      </button>
     </div>
   );
 };
 
 export default MurmurationWordmark;
-

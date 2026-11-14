@@ -130,7 +130,18 @@ const AppLayout: React.FC = () => {
 
       {/* Cinematic Opening Intro Overlay */}
       {showIntro && (
-        <MurmurationWordmark onComplete={() => setShowIntro(false)} />
+        <MurmurationWordmark
+          word="SRI LAKSHMI SAREES"
+          palette={{
+            skyTop: '#000000',
+            skyLow: '#000000',
+            sun: '#000000',
+            ink: '#F5F5F5',
+          }}
+          reeds={false}
+          interactive={false}
+          onComplete={() => setShowIntro(false)}
+        />
       )}
     </div>
   );

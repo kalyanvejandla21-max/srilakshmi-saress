@@ -57,6 +57,8 @@ html {
   font-size: 16px;
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 
 body {
@@ -65,6 +67,7 @@ body {
   color: var(--color-text);
   line-height: 1.6;
   overflow-x: hidden;
+  max-width: 100vw;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -480,7 +483,15 @@ img {
 
 @media (max-width: 480px) {
   .header-container {
-    height: 58px;
+    height: 56px;
+    gap: 0.35rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .header-container {
+    height: 52px;
+    gap: 0.2rem;
   }
 }
 
@@ -504,23 +515,25 @@ img {
 
 @media (max-width: 480px) {
   .brand-logo {
-    gap: 0.4rem;
-    font-size: 1.15rem;
+    gap: 0.35rem;
+    font-size: 1.05rem;
+    min-width: 0;
   }
   .brand-logo img, .brand-logo svg {
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
   }
 }
 
 @media (max-width: 360px) {
   .brand-logo {
-    gap: 0.3rem;
-    font-size: 1.05rem;
+    gap: 0.25rem;
+    font-size: 0.9375rem;
+    min-width: 0;
   }
   .brand-logo img, .brand-logo svg {
-    width: 28px;
-    height: 28px;
+    width: 24px;
+    height: 24px;
   }
 }
 
@@ -596,13 +609,13 @@ img {
 
 @media (max-width: 480px) {
   .header-actions {
-    gap: 0.35rem;
+    gap: 0.25rem;
   }
 }
 
 @media (max-width: 360px) {
   .header-actions {
-    gap: 0.2rem;
+    gap: 0.15rem;
   }
 }
 
@@ -621,15 +634,23 @@ img {
 
 @media (max-width: 480px) {
   .icon-button {
-    width: 36px;
-    height: 36px;
+    width: 34px;
+    height: 34px;
+  }
+  .icon-button svg {
+    width: 18px;
+    height: 18px;
   }
 }
 
 @media (max-width: 360px) {
   .icon-button {
-    width: 34px;
-    height: 34px;
+    width: 30px;
+    height: 30px;
+  }
+  .icon-button svg {
+    width: 16px;
+    height: 16px;
   }
 }
 

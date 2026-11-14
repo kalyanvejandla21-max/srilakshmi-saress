@@ -286,6 +286,7 @@ export const TryTheLook: React.FC<TryTheLookProps> = ({ products }) => {
                   key={piece.id}
                   className={`wardrobe-piece-item ${activeHotspot === pIdx ? 'is-highlighted' : ''}`}
                   style={{ animationDelay: `${pIdx * 80}ms` }}
+                  onClick={() => setActiveHotspot(activeHotspot === pIdx ? null : pIdx)}
                   onMouseEnter={() => setActiveHotspot(pIdx)}
                   onMouseLeave={() => setActiveHotspot(null)}
                 >
