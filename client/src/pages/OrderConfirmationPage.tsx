@@ -5,6 +5,7 @@ import { Order } from '../types';
 import { useCart } from '../context/CartContext';
 import { verifyCashfreePaymentApi, fetchOrderFromServer } from '../services/api';
 import { BUSINESS_CONFIG } from '../config/businessConfig';
+import { SriLakshmiButton } from '../components/ui/SriLakshmiButton';
 
 export const OrderConfirmationPage: React.FC = () => {
   const { orderNumber } = useParams<{ orderNumber: string }>();
@@ -253,13 +254,22 @@ export const OrderConfirmationPage: React.FC = () => {
                 </div>
               )}
 
-              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-                <Link to={`/track-order?order=${orderNumber}`} className="btn-primary">
-                  <Truck size={18} /> Track Order Status
-                </Link>
-                <Link to="/shop" className="btn-secondary">
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap', alignItems: 'center' }}>
+                <SriLakshmiButton
+                  to={`/track-order?order=${orderNumber}`}
+                  variant="primary"
+                  size="md"
+                  icon={<Truck size={17} />}
+                >
+                  Track Order Status
+                </SriLakshmiButton>
+                <SriLakshmiButton
+                  to="/shop"
+                  variant="outline"
+                  size="md"
+                >
                   Continue Shopping
-                </Link>
+                </SriLakshmiButton>
               </div>
             </>
           ) : (

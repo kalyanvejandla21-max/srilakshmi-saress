@@ -1,0 +1,900 @@
+/* Sri Lakshmi Sarees — Signature Interactive "Every Saree, on the rail." Showcase */
+
+.saree-rail-section {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  background-color: var(--bg-primary); /* Warm Ivory #FAF8F5 */
+  padding: 5.5rem 0 4.5rem;
+  border-top: 1px solid rgba(197, 160, 89, 0.22);
+  border-bottom: 1px solid rgba(197, 160, 89, 0.22);
+}
+
+/* Subtle architectural ambient background */
+.saree-rail-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: 
+    radial-gradient(circle at 15% 15%, rgba(197, 160, 89, 0.07) 0%, transparent 50%),
+    radial-gradient(circle at 85% 85%, rgba(92, 6, 28, 0.04) 0%, transparent 50%);
+}
+
+/* Editorial Header */
+.saree-rail-header {
+  position: relative;
+  z-index: 10;
+  text-align: center;
+  max-width: 800px;
+  margin: 0 auto 3rem;
+  padding: 0 1.5rem;
+}
+
+.saree-rail-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--color-gold-dark);
+  margin-bottom: 0.625rem;
+}
+
+.saree-rail-eyebrow-dash {
+  width: 28px;
+  height: 1px;
+  background-color: var(--color-gold);
+}
+
+.saree-rail-title {
+  font-family: var(--font-serif);
+  font-size: clamp(2.35rem, 4.5vw, 3.5rem);
+  font-weight: 500;
+  color: var(--color-maroon);
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  margin-bottom: 0.85rem;
+}
+
+.saree-rail-subtitle {
+  font-size: 1.0625rem;
+  color: var(--color-text-muted);
+  line-height: 1.65;
+  max-width: 580px;
+  margin: 0 auto;
+}
+
+.saree-rail-cue {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-light);
+  margin-top: 1rem;
+}
+
+.saree-rail-cue-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--color-gold);
+  box-shadow: 0 0 6px var(--color-gold);
+  animation: rail-cue-glow 2.4s infinite ease-in-out;
+}
+
+@keyframes rail-cue-glow {
+  0%, 100% { opacity: 0.4; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.25); }
+}
+
+/* The Continuous Antique Brass Rail Bar */
+/* Saree Rail Outer Track Area */
+.saree-rail-track-outer {
+  position: relative;
+  width: 100%;
+  margin-top: 1rem;
+}
+
+/* Continuous Antique Brass Rail Bar spanning the top */
+.saree-rail-brass-bar-wrap {
+  position: absolute;
+  top: 12px;
+  left: 0;
+  right: 0;
+  height: 14px;
+  z-index: 25;
+  pointer-events: none;
+}
+
+.saree-rail-brass-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 2px;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(
+    to bottom,
+    #FFFDF7 0%,
+    #F4E2AA 20%,
+    #C5A059 48%,
+    #9C772F 78%,
+    #5A4016 100%
+  );
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.28),
+              inset 0 1px 1px rgba(255, 255, 255, 0.9),
+              inset 0 -1px 1px rgba(60, 40, 10, 0.6);
+}
+
+.saree-rail-brass-highlight {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0 4px,
+    rgba(255, 255, 255, 0.45) 4px 6px,
+    transparent 6px 14px
+  );
+  opacity: 0.4;
+  mix-blend-mode: overlay;
+}
+
+.saree-rail-wall-bracket {
+  position: absolute;
+  top: -8px;
+  width: 24px;
+  height: 28px;
+  border-radius: 4px;
+  background: linear-gradient(to right, #FFF8EB, var(--color-gold), #5A4016);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-around;
+  padding: 3px 0;
+  z-index: 28;
+}
+
+.saree-rail-wall-bracket.left {
+  left: 20px;
+}
+
+.saree-rail-wall-bracket.right {
+  right: 20px;
+}
+
+.saree-rail-wall-bracket-bolt {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: var(--color-maroon);
+}
+
+/* Horizontal Interactive Viewport */
+.saree-rail-viewport {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  padding: 0 0 2.5rem 0; /* Zero top padding so hook meets the rail directly! */
+}
+
+.saree-rail-viewport:active {
+  cursor: grabbing;
+}
+
+.saree-rail-track {
+  display: flex;
+  align-items: flex-start;
+  will-change: transform;
+}
+
+/* Saree Garment Column — Entire Object (Hook + Hanger + Saree) Sways as One Physical Unit */
+.saree-rail-garment-col {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-decoration: none;
+  color: inherit;
+  outline: none;
+  /* Transform origin exactly at 50% width and 16px down (hook contact point on the brass rail!) */
+  transform-origin: 50% 16px;
+  animation: hangerGentleSway 4.8s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes hangerGentleSway {
+  0% { transform: rotate(-1.5deg); }
+  100% { transform: rotate(1.5deg); }
+}
+
+.saree-rail-garment-col:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 8px;
+  border-radius: var(--radius-md);
+}
+
+/* Unified Hanging Saree Object */
+.hanging-saree {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+}
+
+.saree-rail-garment-col:hover .hanging-saree {
+  transform: translateY(-6px);
+}
+
+/* Antique Brass Hanger Hook & Shoulders */
+.hanging-hanger-wrap {
+  position: relative;
+  width: 100%;
+  z-index: 12;
+  pointer-events: none;
+  display: flex;
+  justify-content: center;
+}
+
+.hanging-hanger-svg {
+  width: 100%;
+  max-width: 260px;
+  height: auto;
+  overflow: visible;
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.25));
+}
+
+/* Saree Garment Presentation - Physically connected to the hanger with NO GAP */
+.hanging-saree-body {
+  position: relative;
+  width: 100%;
+  /* Pull up directly behind the hanger shoulders with NO gap */
+  margin-top: -26px;
+  z-index: 6;
+  border-radius: 18px 18px 14px 14px;
+  overflow: hidden;
+  background-color: #FFFFFF;
+  box-shadow: 0 12px 28px -6px rgba(44, 44, 44, 0.14),
+              0 0 0 1px rgba(197, 160, 89, 0.35);
+  transition: box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.4s ease;
+}
+
+.saree-rail-garment-col:hover .hanging-saree-body {
+  box-shadow: 0 20px 42px -6px rgba(92, 6, 28, 0.24),
+              0 0 0 1.5px var(--color-gold);
+}
+
+/* Fabric drape fold crest directly beneath hanger bar */
+.hanging-saree-crest {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 24px;
+  background: linear-gradient(
+    180deg,
+    rgba(60, 20, 30, 0.32) 0%,
+    rgba(0, 0, 0, 0.1) 60%,
+    transparent 100%
+  );
+  pointer-events: none;
+  z-index: 8;
+  border-top: 1.5px solid rgba(230, 202, 101, 0.6);
+}
+
+.saree-rail-photo-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4.1;
+  overflow: hidden;
+  background-color: var(--bg-secondary);
+}
+
+.saree-rail-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  display: block;
+  pointer-events: none;
+  transition: transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.saree-rail-garment-col:hover .saree-rail-photo {
+  transform: scale(1.04);
+}
+
+/* Authentic Fabric Badge on Drape */
+.saree-rail-fabric-pill {
+  position: absolute;
+  top: 22px;
+  left: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 1px solid rgba(197, 160, 89, 0.4);
+  color: var(--color-maroon);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.25rem 0.55rem;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+  z-index: 9;
+}
+
+.saree-rail-discount-pill {
+  position: absolute;
+  top: 22px;
+  right: 12px;
+  background-color: var(--color-maroon);
+  color: #FFFFFF;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 2px 6px rgba(92, 6, 28, 0.25);
+  z-index: 9;
+}
+
+/* Swinging Boutique Price Tag */
+.saree-rail-tag-assembly {
+  position: absolute;
+  right: 12px;
+  top: 48px;
+  transform-origin: top center;
+  z-index: 10;
+  pointer-events: none;
+  animation: tagOscillate 3.2s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes tagOscillate {
+  0% { transform: rotate(-5deg); }
+  100% { transform: rotate(7deg); }
+}
+
+.saree-rail-tag-string {
+  width: 1px;
+  height: 18px;
+  background: linear-gradient(to bottom, var(--color-gold), var(--color-maroon));
+  margin: 0 auto;
+}
+
+.saree-rail-tag-card {
+  background: #FFFFFF;
+  border: 1px solid var(--color-gold);
+  border-radius: 3px;
+  padding: 4px 7px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-maroon);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+/* Editorial Floating Label Beneath Saree */
+.saree-rail-editorial-label {
+  width: 100%;
+  padding-top: 1.125rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.saree-rail-label-category {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--color-gold-dark);
+  margin-bottom: 0.35rem;
+}
+
+.saree-rail-label-title {
+  font-family: var(--font-serif);
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: var(--color-maroon);
+  line-height: 1.3;
+  margin-bottom: 0.5rem;
+  max-width: 90%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saree-rail-label-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.saree-rail-label-price {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+}
+
+.saree-rail-label-original-price {
+  font-size: 0.8125rem;
+  color: var(--color-text-light);
+  text-decoration: line-through;
+}
+
+.saree-rail-label-action {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-gold-dark);
+  opacity: 0;
+  transform: translateY(4px);
+  transition: all var(--transition-normal);
+}
+
+.saree-rail-garment-col:hover .saree-rail-label-action {
+  opacity: 1;
+  transform: translateY(0);
+  color: var(--color-maroon);
+}
+
+/* Bottom CTA & Trust */
+.saree-rail-footer {
+  text-align: center;
+  margin-top: 2rem;
+  position: relative;
+  z-index: 10;
+}
+
+.saree-rail-explore-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  background-color: var(--color-maroon);
+  color: #FFFFFF;
+  padding: 0.95rem 2.25rem;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 0.875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid var(--color-gold);
+  box-shadow: 0 4px 14px rgba(92, 6, 28, 0.2);
+  transition: all var(--transition-normal);
+}
+
+.saree-rail-explore-btn:hover {
+  background-color: var(--color-maroon-hover);
+  box-shadow: 0 8px 22px rgba(92, 6, 28, 0.28), 0 0 12px rgba(197, 160, 89, 0.4);
+  transform: translateY(-2px);
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  .saree-rail-cue-pulse {
+    animation: none;
+  }
+  .hanging-saree-body,
+  .saree-rail-photo,
+  .hanging-hanger-svg,
+  .saree-rail-tag-assembly,
+  .saree-rail-garment-col {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Mobile & Tablet Adjustments */
+@media (max-width: 768px) {
+  .saree-rail-section {
+    padding: 3.75rem 0 3rem;
+  }
+  .saree-rail-header {
+    margin-bottom: 2rem;
+  }
+  .saree-rail-title {
+    font-size: 2.125rem;
+  }
+  .saree-rail-label-title {
+    font-size: 1rem;
+  }
+  .saree-rail-hanger-svg {
+    width: 130px;
+    height: 40px;
+  }
+  .saree-rail-wall-bracket {
+    display: none;
+  }
+}
+
+
+
+/* ======================================================== */
+/* Category Filter Pills (Reference Video Frames 28–34)     */
+/* ======================================================== */
+.saree-rail-category-pills {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 2rem;
+  flex-wrap: wrap;
+}
+
+.rail-category-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(197, 160, 89, 0.35);
+  background: #FAF8F5;
+  color: #333333;
+  font-family: var(--font-sans, system-ui);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.rail-category-pill .pill-count {
+  font-size: 0.6875rem;
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: #666666;
+}
+
+.rail-category-pill:hover {
+  background: #F4EFE6;
+  color: #8B202F;
+  border-color: #8B202F;
+}
+
+.rail-category-pill.is-active {
+  background: #8B202F;
+  color: #FFFFFF;
+  border-color: #8B202F;
+  box-shadow: 0 4px 14px rgba(139, 32, 47, 0.25);
+}
+
+.rail-category-pill.is-active .pill-count {
+  background: rgba(255, 255, 255, 0.22);
+  color: #FFFFFF;
+}
+
+/* Background Rail Blur when Inspector is Open */
+.saree-rail-viewport.is-blurred {
+  filter: blur(8px) brightness(0.65);
+  pointer-events: none;
+  transition: filter 0.4s ease;
+}
+
+/* ======================================================== */
+/* Focused Inspector Spotlight (Reference Video Frames 24–27)*/
+/* ======================================================== */
+.rail-inspector-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.rail-inspector-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(18, 12, 14, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: fadeIn 0.3s ease;
+}
+
+.rail-inspector-stage {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 520px;
+  width: 100%;
+  animation: popUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes popUp {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.inspector-close-btn {
+  position: absolute;
+  top: -48px;
+  right: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.inspector-close-btn:hover {
+  background: #8B202F;
+  border-color: #8B202F;
+}
+
+.inspector-arrow-btn {
+  position: absolute;
+  top: 38%;
+  transform: translateY(-50%);
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(197, 160, 89, 0.5);
+  color: #1A1A1A;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 15;
+  transition: all 0.2s ease;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.inspector-arrow-btn:hover {
+  background: #8B202F;
+  color: #FFFFFF;
+}
+
+.inspector-arrow-btn.arrow-prev {
+  left: -60px;
+}
+
+.inspector-arrow-btn.arrow-next {
+  right: -60px;
+}
+
+/* Suspended Hanger assembly */
+.inspector-hanger-assembly {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  width: 100%;
+}
+
+.inspector-hanger-svg {
+  width: 240px;
+  height: 65px;
+  margin-bottom: -26px; /* Seamless overlap in modal */
+  z-index: 10;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.45));
+}
+
+.inspector-garment-frame {
+  width: 290px;
+  aspect-ratio: 3 / 4.2;
+  border-radius: 18px 18px 16px 16px;
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), 0 0 0 1.5px rgba(197, 160, 89, 0.6);
+  background: #000000;
+  position: relative;
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  perspective: 800px;
+  z-index: 5;
+}
+
+.inspector-garment-frame.is-flipped {
+  transform: rotateY(180deg);
+}
+
+.inspector-garment-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.inspector-garment-shadow {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.08) 0%, rgba(0, 0, 0, 0.25) 100%);
+  pointer-events: none;
+}
+
+/* Control Card Beneath */
+.inspector-control-card {
+  width: 100%;
+  background: #FFFFFF;
+  border-radius: 14px;
+  padding: 1.5rem 1.75rem;
+  margin-top: 1.25rem;
+  text-align: center;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(197, 160, 89, 0.35);
+}
+
+.inspector-fabric-tag {
+  font-family: var(--font-sans, system-ui);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8C6D23;
+  display: block;
+}
+
+.inspector-title {
+  font-family: var(--font-serif, "Playfair Display", Georgia, serif);
+  font-size: 1.25rem;
+  color: #1A1A1A;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.inspector-price {
+  font-family: var(--font-serif, "Playfair Display", Georgia, serif);
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #8B202F;
+  margin-bottom: 0.85rem;
+}
+
+.inspector-original-price {
+  font-size: 0.9375rem;
+  color: #999999;
+  text-decoration: line-through;
+  margin-left: 0.5rem;
+  font-weight: 400;
+}
+
+/* Front / Back Toggle Pills */
+.inspector-view-toggles {
+  display: inline-flex;
+  gap: 0.4rem;
+  background: #FAF8F5;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid rgba(197, 160, 89, 0.3);
+  margin-bottom: 0.85rem;
+}
+
+.view-pill {
+  padding: 0.35rem 1rem;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  font-family: var(--font-sans, system-ui);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #666666;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.view-pill.is-active {
+  background: #1A1A1A;
+  color: #FFFFFF;
+}
+
+/* Blouse Checkbox */
+.inspector-option-row {
+  margin-bottom: 1.15rem;
+}
+
+.inspector-blouse-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-sans, system-ui);
+  font-size: 0.8125rem;
+  color: #555555;
+  cursor: pointer;
+}
+
+.inspector-actions-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.inspector-add-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.85rem 1.25rem;
+  background: #8B202F;
+  color: #FFFFFF;
+  border: none;
+  border-radius: 999px;
+  font-family: var(--font-sans, system-ui);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.inspector-add-btn:hover {
+  background: #6E1824;
+}
+
+.inspector-wish-btn {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: #FAF8F5;
+  border: 1px solid rgba(197, 160, 89, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.inspector-wish-btn:hover {
+  background: #FFF5F7;
+  border-color: #8B202F;
+}
+
+.inspector-detail-link {
+  display: inline-block;
+  margin-top: 0.85rem;
+  font-family: var(--font-sans, system-ui);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #8B202F;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 680px) {
+  .inspector-arrow-btn.arrow-prev {
+    left: 4px;
+  }
+  .inspector-arrow-btn.arrow-next {
+    right: 4px;
+  }
+  .inspector-garment-frame {
+    width: 240px;
+  }
+}

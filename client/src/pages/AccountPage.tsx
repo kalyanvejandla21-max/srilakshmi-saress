@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { getStoredOrders } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import { Order } from '../types';
+import { SriLakshmiButton } from '../components/ui/SriLakshmiButton';
 
 export const AccountPage: React.FC = () => {
   const { user, logout } = useAuth();
@@ -72,9 +73,9 @@ export const AccountPage: React.FC = () => {
               <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9375rem', marginBottom: '1rem' }}>
                 You have not placed any saree orders yet.
               </p>
-              <Link to="/shop" className="btn-primary">
+              <SriLakshmiButton to="/shop" variant="primary" size="md">
                 Explore Saree Catalogue
-              </Link>
+              </SriLakshmiButton>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>

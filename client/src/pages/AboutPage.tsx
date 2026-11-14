@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Heart, PackageCheck, ShieldCheck, Sparkles, ArrowRight } from 'lucide-react';
 import { BUSINESS_CONFIG } from '../config/businessConfig';
+import { SriLakshmiButton } from '../components/ui/SriLakshmiButton';
 
 export const AboutPage: React.FC = () => {
   return (
@@ -90,9 +91,9 @@ export const AboutPage: React.FC = () => {
 
           {/* Action Links */}
           <div style={{ marginTop: '2.5rem', paddingTop: '1.75rem', borderTop: '1px solid var(--color-border)', display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Link to="/shop" className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-              Explore Our Collection <ArrowRight size={16} />
-            </Link>
+            <SriLakshmiButton to="/shop" variant="primary" size="md">
+              Explore Our Collection
+            </SriLakshmiButton>
             <Link to="/contact" className="btn-secondary">
               Contact Our Family Team
             </Link>

@@ -4,6 +4,7 @@ import { ShieldCheck, Truck, CreditCard, Banknote, Lock, ArrowRight, CheckCircle
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { SriLakshmiButton } from '../components/ui/SriLakshmiButton';
 import { Order, ShippingAddress } from '../types';
 import {
   createOrderOnServer,
@@ -101,9 +102,9 @@ export const CheckoutPage: React.FC = () => {
         <p style={{ marginTop: '0.5rem', marginBottom: '1.5rem', color: 'var(--color-text-muted)' }}>
           Add sarees to your cart before proceeding to checkout.
         </p>
-        <button className="btn-primary" onClick={() => navigate('/shop')}>
+        <SriLakshmiButton variant="primary" size="md" onClick={() => navigate('/shop')}>
           Browse Sarees
-        </button>
+        </SriLakshmiButton>
       </div>
     );
   }

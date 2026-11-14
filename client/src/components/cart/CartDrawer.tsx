@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { X, Trash2, ShoppingBag, ArrowRight, Tag, ShieldCheck } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
 import { getStoredCoupons } from '../../services/api';
+import { SriLakshmiButton } from '../ui/SriLakshmiButton';
 
 export const CartDrawer: React.FC = () => {
   const {
@@ -89,15 +90,16 @@ export const CartDrawer: React.FC = () => {
               <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', marginBottom: '1.5rem' }}>
                 Explore our handwoven Kanjivaram silk, cotton, and bridal saree collections.
               </p>
-              <button
-                className="btn-primary"
+              <SriLakshmiButton
+                variant="primary"
+                size="md"
                 onClick={() => {
                   setIsCartOpen(false);
                   navigate('/shop');
                 }}
               >
                 Shop Saree Collection
-              </button>
+              </SriLakshmiButton>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -217,13 +219,14 @@ export const CartDrawer: React.FC = () => {
             </div>
 
             {/* Checkout CTA */}
-            <button
-              className="btn-primary"
-              style={{ width: '100%', padding: '0.875rem', justifyContent: 'center' }}
+            <SriLakshmiButton
+              variant="primary"
+              size="lg"
+              fullWidth
               onClick={handleCheckoutClick}
             >
-              Proceed to Checkout <ArrowRight size={18} />
-            </button>
+              Proceed to Checkout
+            </SriLakshmiButton>
             <div style={{ textAlign: 'center', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
               <ShieldCheck size={14} color="var(--color-gold)" /> Guaranteed 100% Authentic Handwoven Quality
             </div>

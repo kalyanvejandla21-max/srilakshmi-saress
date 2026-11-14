@@ -27,6 +27,7 @@ import { AboutPage } from './pages/AboutPage';
 import { ContactPage } from './pages/ContactPage';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminLoginPage } from './pages/admin/AdminLoginPage';
+import { MurmurationWordmark } from './components/ui/murmuration-wordmark';
 import { useAuth } from './context/AuthContext';
 import { getStoredAnnouncement } from './services/api';
 
@@ -57,6 +58,14 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 const AppLayout: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [announcement, setAnnouncement] = useState(getStoredAnnouncement);
+  const [showIntro, setShowIntro] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return !sessionStorage.getItem('sriLakshmiIntroSeen');
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     // Refresh announcement if updated elsewhere
@@ -118,6 +127,11 @@ const AppLayout: React.FC = () => {
 
       {/* Footer with brand, categories, policies & newsletter */}
       <Footer />
+
+      {/* Cinematic Opening Intro Overlay */}
+      {showIntro && (
+        <MurmurationWordmark onComplete={() => setShowIntro(false)} />
+      )}
     </div>
   );
 };

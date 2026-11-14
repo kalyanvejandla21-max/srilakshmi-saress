@@ -29,6 +29,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenMobileMenu }) => {
     }
   };
 
+  const handleAnchorClick = (e: React.MouseEvent<HTMLAnchorElement>, targetId: string) => {
+    if (location.pathname === '/') {
+      e.preventDefault();
+      const el = document.getElementById(targetId);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  };
+
   return (
     <header className="main-header">
       <div className="container header-container">
@@ -53,11 +63,59 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenMobileMenu }) => {
           </div>
         </Link>
 
-        {/* Desktop Main Navigation Links */}
+        {/* Desktop Main Navigation Links (Matching High Fashion Editorial Navbar) */}
         <nav className="desktop-nav">
           <Link to="/" className={`nav-link ${location.pathname === '/' ? 'active' : ''}`}>
             Home
           </Link>
+
+          <a
+            href="/#try-the-look"
+            className="nav-link"
+            onClick={(e) => handleAnchorClick(e, 'try-the-look')}
+          >
+            Try the Look
+          </a>
+
+          <a
+            href="/#pick-a-silk"
+            className="nav-link"
+            onClick={(e) => handleAnchorClick(e, 'pick-a-silk')}
+          >
+            Pick a Silk
+          </a>
+
+          <a
+            href="/#the-rack"
+            className="nav-link"
+            onClick={(e) => handleAnchorClick(e, 'the-rack')}
+          >
+            The Rack
+          </a>
+
+          <a
+            href="/#feel-the-drape"
+            className="nav-link"
+            onClick={(e) => handleAnchorClick(e, 'feel-the-drape')}
+          >
+            The Muse
+          </a>
+
+          <a
+            href="/#bridal-collection"
+            className="nav-link"
+            onClick={(e) => handleAnchorClick(e, 'bridal-collection')}
+          >
+            Bridal
+          </a>
+
+          <a
+            href="/#our-story"
+            className="nav-link"
+            onClick={(e) => handleAnchorClick(e, 'our-story')}
+          >
+            The Weave
+          </a>
 
           <div
             style={{ position: 'relative' }}
@@ -72,34 +130,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenMobileMenu }) => {
               <ChevronDown size={14} />
             </Link>
           </div>
-
-          <Link to="/shop?category=Silk+Sarees" className="nav-link">
-            Silk Sarees
-          </Link>
-
-          <Link to="/shop?category=Cotton+Sarees" className="nav-link">
-            Cotton Sarees
-          </Link>
-
-          <Link to="/shop?category=Wedding+Sarees" className="nav-link">
-            Wedding Collection
-          </Link>
-
-          <Link to="/shop?category=Festive+Sarees" className="nav-link">
-            Festive Collection
-          </Link>
-
-          <Link to="/shop?category=New+Arrivals" className="nav-link">
-            New Arrivals
-          </Link>
-
-          <Link to="/shop?category=Best+Sellers" className="nav-link">
-            Best Sellers
-          </Link>
-
-          <Link to="/shop?category=Sale" className="nav-link" style={{ color: 'var(--color-danger)', fontWeight: 600 }}>
-            Sale
-          </Link>
         </nav>
 
         {/* Header Quick Actions */}

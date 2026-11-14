@@ -23,7 +23,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onQuickView }
 
   return (
     <div className="product-card">
-      {/* Badges */}
+      {/* Editorial Typographic Badges */}
       <div className="product-card-badges">
         {isOutOfStock ? (
           <span className="badge badge-stock-out">Out of Stock</span>
@@ -32,27 +32,26 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onQuickView }
             {discountPercent > 0 && (
               <span className="badge badge-sale">{discountPercent}% OFF</span>
             )}
-            {product.isDemo && (
-              <span className="badge" style={{ backgroundColor: '#D97706', color: '#FFFFFF' }}>Demo</span>
+            {product.isNewArrival && <span className="badge badge-new">New Weave</span>}
+            {product.isBestSeller && !product.isNewArrival && (
+              <span className="badge badge-bestseller">Patron Favorite</span>
             )}
-            {product.isNewArrival && <span className="badge badge-new">New</span>}
-            {product.isBestSeller && <span className="badge badge-bestseller">Best Seller</span>}
           </>
         )}
       </div>
 
-      {/* Wishlist Button */}
+      {/* Floating Wishlist Button */}
       <button
         className={`product-card-wishlist ${isWished ? 'active' : ''}`}
         onClick={() => toggleWishlist(product)}
-        aria-label="Add to Wishlist"
+        aria-label={isWished ? 'Remove from Wishlist' : 'Add to Wishlist'}
       >
-        <Heart size={18} fill={isWished ? 'var(--color-maroon)' : 'none'} />
+        <Heart size={16} fill={isWished ? 'var(--color-maroon)' : 'none'} />
       </button>
 
-      {/* Image Container */}
+      {/* Portrait Image Container */}
       <div className="product-card-image-wrapper">
-        <Link to={`/product/${product.slug}`}>
+        <Link to={`/product/${product.slug}`} aria-label={product.name}>
           <img
             src={product.images[0] || '/images/hero-banner.jpg'}
             alt={product.name}
@@ -66,15 +65,33 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onQuickView }
           <div className="product-card-quick-add">
             <button
               onClick={() => addToCart(product, 1)}
-              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem', color: '#FFFFFF' }}
+              style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.4rem',
+                color: '#FFFFFF',
+                fontWeight: 600,
+                fontSize: '0.8125rem',
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+              }}
             >
-              <ShoppingBag size={16} /> Quick Add
+              <ShoppingBag size={15} /> Quick Add
             </button>
             {onQuickView && (
               <button
                 onClick={() => onQuickView(product)}
-                style={{ padding: '0 0.5rem', color: '#FFFFFF', borderLeft: '1px solid rgba(255,255,255,0.3)' }}
+                style={{
+                  padding: '0 0.75rem',
+                  color: '#FFFFFF',
+                  borderLeft: '1px solid rgba(255,255,255,0.25)',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
                 title="Quick View"
+                aria-label="Quick View Saree"
               >
                 <Eye size={16} />
               </button>
@@ -92,10 +109,19 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onQuickView }
 
         {/* Rating preview */}
         {product.rating && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginBottom: '0.5rem', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-            <Star size={14} fill="var(--color-gold)" color="var(--color-gold)" />
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.25rem',
+              marginBottom: '0.5rem',
+              fontSize: '0.75rem',
+              color: 'var(--color-text-muted)',
+            }}
+          >
+            <Star size={13} fill="var(--color-gold)" color="var(--color-gold)" />
             <span style={{ fontWeight: 600, color: 'var(--color-text)' }}>{product.rating}</span>
-            <span>({product.reviewsCount || 0})</span>
+            <span style={{ fontSize: '0.6875rem' }}>({product.reviewsCount || 0})</span>
           </div>
         )}
 
@@ -126,7 +152,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onQuickView }
             }}
             aria-label={`Add ${product.name} to cart`}
           >
-            <ShoppingBag size={14} /> Add
+            <ShoppingBag size={14} /> Add to Cart
           </button>
         )}
       </div>

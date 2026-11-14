@@ -1,0 +1,277 @@
+.six-moods-section {
+  width: 100%;
+  background-color: #FAF8F5;
+  padding: 5.5rem 1.5rem;
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(197, 160, 89, 0.2);
+}
+
+.six-moods-container {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.six-moods-header {
+  text-align: center;
+  max-width: 680px;
+  margin: 0 auto 3.75rem;
+}
+
+.six-moods-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-sans, system-ui);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-gold-dark, #8C6D23);
+  margin-bottom: 0.75rem;
+}
+
+.eyebrow-accent {
+  color: #C5A059;
+  font-size: 0.7rem;
+  animation: sparkleTwinkle 2s ease-in-out infinite alternate;
+}
+
+.six-moods-title {
+  font-family: var(--font-serif, "Playfair Display", Georgia, serif);
+  font-size: clamp(2.1rem, 4.2vw, 3.2rem);
+  font-weight: 600;
+  color: #1A1A1A;
+  line-height: 1.18;
+  margin-bottom: 0.85rem;
+  letter-spacing: -0.015em;
+}
+
+.title-highlight {
+  color: #8B202F;
+  font-style: italic;
+  font-weight: 400;
+}
+
+.six-moods-desc {
+  font-family: var(--font-sans, system-ui);
+  font-size: 1rem;
+  color: #666666;
+  line-height: 1.6;
+}
+
+/* 6 Arches Grid */
+.six-moods-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+/* Scroll Entrance Animation */
+.mood-arch-card {
+  display: flex;
+  flex-direction: column;
+  text-decoration: none;
+  color: inherit;
+  opacity: 0;
+  transform: translateY(48px) scale(0.92);
+  transition: transform 0.75s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.75s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, opacity;
+}
+
+.six-moods-section.is-visible .mood-arch-card {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+/* Arch Frame with Organic Floating Motion */
+.mood-arch-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 9 / 15;
+  border-radius: 999px 999px 8px 8px;
+  overflow: hidden;
+  background: #EAE6DF;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: archFloat 4.8s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes archFloat {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-6px); }
+}
+
+.mood-arch-card:hover .mood-arch-frame {
+  transform: translateY(-10px) scale(1.04) !important;
+  box-shadow: 0 24px 44px rgba(139, 32, 47, 0.2), 0 0 0 1px rgba(197, 160, 89, 0.6);
+  animation-play-state: paused;
+}
+
+.mood-arch-outline {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.mood-arch-media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.mood-arch-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.75s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mood-arch-card:hover .mood-arch-img {
+  transform: scale(1.09);
+}
+
+.mood-arch-vignette {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.12) 0%,
+    rgba(0, 0, 0, 0) 35%,
+    rgba(26, 10, 14, 0.45) 100%
+  );
+  z-index: 2;
+  transition: opacity 0.4s ease;
+}
+
+.mood-arch-card:hover .mood-arch-vignette {
+  opacity: 0.75;
+}
+
+.mood-arch-seal {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8C6D23;
+  border: 1px solid rgba(197, 160, 89, 0.5);
+  z-index: 4;
+  transition: transform 0.4s ease, background 0.3s ease;
+}
+
+.mood-arch-seal svg {
+  animation: sealSpin 10s linear infinite;
+}
+
+@keyframes sealSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.mood-arch-card:hover .mood-arch-seal {
+  transform: scale(1.15);
+  background: #8B202F;
+  color: #FFFFFF;
+}
+
+/* Info Beneath Arch */
+.mood-arch-info {
+  margin-top: 1.15rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.mood-arch-category {
+  font-family: var(--font-sans, system-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #8C6D23;
+}
+
+.mood-arch-name {
+  font-family: var(--font-serif, "Playfair Display", Georgia, serif);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: #1A1A1A;
+  margin: 0;
+  transition: color 0.3s ease;
+}
+
+.mood-arch-card:hover .mood-arch-name {
+  color: #8B202F;
+}
+
+.mood-arch-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  font-family: var(--font-sans, system-ui);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #8B202F;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  margin-top: 0.35rem;
+}
+
+.mood-arch-card:hover .mood-arch-cta {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.cta-arrow {
+  transition: transform 0.3s ease;
+}
+
+.mood-arch-card:hover .cta-arrow {
+  transform: translateX(3px);
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .six-moods-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.75rem 1.25rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .six-moods-section {
+    padding: 3.75rem 1rem;
+  }
+  .six-moods-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.25rem 0.85rem;
+  }
+  .mood-arch-name {
+    font-size: 0.9375rem;
+  }
+  .mood-arch-category {
+    font-size: 0.625rem;
+  }
+  .mood-arch-cta {
+    display: none;
+  }
+}

@@ -6,7 +6,7 @@ export const BrandIntroduction: React.FC = () => {
       {/* Subtle Heritage Pre-title Accent */}
       <div className="brand-pretitle">
         <span className="brand-pretitle-line" aria-hidden="true" />
-        <span className="brand-pretitle-text">Heritage Handloom Silk</span>
+        <span className="brand-pretitle-text">A Century of Textile Artistry</span>
         <span className="brand-pretitle-line" aria-hidden="true" />
       </div>
 
@@ -15,14 +15,14 @@ export const BrandIntroduction: React.FC = () => {
         SRI LAKSHMI SAREES
       </h1>
 
-      {/* Main Tagline */}
-      <p className="brand-tagline">
-        Elegance Woven in Every Thread
+      {/* Editorial Main Headline */}
+      <p className="brand-tagline" style={{ fontStyle: 'normal' }}>
+        Tradition, draped beautifully.
       </p>
 
-      {/* Supporting Text */}
+      {/* Editorial Supporting Text */}
       <p className="brand-supporting">
-        Discover timeless sarees for every celebration.
+        Discover heirloom handloom sarees woven with pure mulberry silk, authentic zari, and generations of artisan passion.
       </p>
     </div>
   );

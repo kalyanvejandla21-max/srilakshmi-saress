@@ -3,9 +3,17 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Sparkles, ShieldCheck, HeartHandshake, Award, Star, Truck, CheckCircle2 } from 'lucide-react';
 import { ProductCard } from '../components/product/ProductCard';
 import { QuickViewModal } from '../components/product/QuickViewModal';
-import { FloralHero } from '../components/hero/FloralHero';
+import { AtelierHero } from '../components/hero/AtelierHero';
+import { HeritageTicker } from '../components/home/HeritageTicker';
+import { SixMoodsArchive } from '../components/home/SixMoodsArchive';
+import { TryTheLook } from '../components/home/TryTheLook';
+import { PickASilk } from '../components/home/PickASilk';
+import { SareeRail } from '../components/home/SareeRail';
+import { FeelTheDrape } from '../components/home/FeelTheDrape';
+import { BridalCoverflow } from '../components/home/BridalCoverflow';
+import { MuseReels } from '../components/home/MuseReels';
 import { CategoryCarousel } from '../components/category/CategoryCarousel';
-import { SriLakshmiEdit } from '../components/home/SriLakshmiEdit';
+import { SriLakshmiButton } from '../components/ui/SriLakshmiButton';
 import { Product } from '../types';
 import { getStoredProducts, fetchProductsFromServer } from '../services/api';
 
@@ -21,7 +29,6 @@ export const HomePage: React.FC = () => {
 
   const newArrivals = products.filter((p) => p.isNewArrival).slice(0, 4);
   const bestSellers = products.filter((p) => p.isBestSeller).slice(0, 4);
-  const featuredProducts = products.filter((p) => p.isFeatured).slice(0, 4);
 
   const categories = [
     { title: 'Silk Sarees', count: 'Kanjivaram & Banarasi', img: '/images/cat-silk.jpg', link: '/shop?category=Silk+Sarees' },
@@ -58,36 +65,57 @@ export const HomePage: React.FC = () => {
 
   return (
     <div>
-      {/* 1. ANIMATED FLORAL HERO (Originkit Flower Border & Central Brand Introduction) */}
-      <FloralHero />
+      {/* 1. ATELIER HERO (Woven for the Divine - Reference Video Scene 1) */}
+      <AtelierHero />
 
-      {/* C. SHOP BY CATEGORY */}
+      {/* 2. RUNNING TICKER RIBBON (From Reference Video: "TRY THE LOOK • PURE ZARI • THE RACK • BRIDAL • THE LOOMS") */}
+      <HeritageTicker />
+
+      {/* 3. SIX MOODS. TIMELESS DRAPES (Scene 2: 6 Architectural Temple Arches) */}
+      <SixMoodsArchive />
+
+      {/* 4. TRY THE LOOK (Scene 3: Interactive Head-to-Toe Lookbook & Wardrobe Builder) */}
+      <TryTheLook products={products} />
+
+      {/* 5. PICK A SILK (Scene 4: 3D Curved Perspective Color Deck Swatch Arc) */}
+      <PickASilk products={products} />
+
+      {/* 6. THE RACK / EVERY SAREE ON THE RAIL (Scene 5: Physical Rail with Focused Inspector Mode) */}
+      <SareeRail products={products} />
+
+      {/* 7. FEEL THE DRAPE (Scene 6: Multicolored Title, 3-Column Motion Grid & Center Visual) */}
+      <FeelTheDrape />
+
+      {/* 8. THE BRIDAL COLLECTION (Scene 7: 3D Arched Coverflow Showcase) */}
+      <BridalCoverflow products={products} />
+
+      {/* 9. SILK, IN MOTION / THE MUSE REELS (Scene 8: 9:16 Vertical Video Reels Carousel) */}
+      <MuseReels />
+
+      {/* 10. SHOP BY CATEGORY */}
       <section className="section-padding" style={{ backgroundColor: 'var(--bg-primary)' }}>
         <div className="container">
-          <div style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto 3rem' }}>
-            <span style={{ color: 'var(--color-gold-dark)', fontWeight: 700, fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+          <div style={{ textAlign: 'center', maxWidth: '640px', margin: '0 auto 3.5rem' }}>
+            <span style={{ color: 'var(--color-gold-dark)', fontWeight: 700, fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.2em' }}>
               Handcrafted Collections
             </span>
-            <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '2.25rem', color: 'var(--color-maroon)', marginTop: '0.25rem' }}>
+            <h2 className="section-title">
               Shop By Saree Fabric & Occasion
             </h2>
-            <div style={{ width: '60px', height: '2px', backgroundColor: 'var(--color-gold)', margin: '0.75rem auto 0' }} />
+            <div style={{ width: '50px', height: '1.5px', backgroundColor: 'var(--color-gold)', margin: '1rem auto 0' }} />
           </div>
 
           <CategoryCarousel categories={categories} />
         </div>
       </section>
 
-      {/* NEW: THE SRI LAKSHMI EDIT — ANIMATED SAREE SHOWCASE */}
-      <SriLakshmiEdit products={products} />
-
-      {/* D. NEW ARRIVALS */}
+      {/* 11. NEW ARRIVALS (Redesigned Editorial Product Grid) */}
       <section className="section-padding" style={{ backgroundColor: '#FFFFFF' }}>
         <div className="container">
           <div className="section-header-row">
             <div>
-              <span style={{ color: 'var(--color-gold-dark)', fontWeight: 700, fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                Fresh Weaves
+              <span style={{ color: 'var(--color-gold-dark)', fontWeight: 700, fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.2em' }}>
+                Fresh Off The Loom
               </span>
               <h2 className="section-title">
                 New Arrivals
@@ -106,12 +134,12 @@ export const HomePage: React.FC = () => {
         </div>
       </section>
 
-      {/* F. FESTIVE & WEDDING CAMPAIGN */}
+      {/* 12. FESTIVE & WEDDING EDITORIAL CAMPAIGN */}
       <section className="campaign-banner">
         <div className="campaign-banner-backdrop" />
         <div className="container campaign-banner-container">
           <div className="campaign-banner-content">
-            <span style={{ color: 'var(--color-gold)', fontWeight: 700, fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            <span style={{ color: 'var(--color-gold)', fontWeight: 700, fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.2em' }}>
               Royal Bridal Edition
             </span>
             <h2 className="campaign-banner-title">
@@ -120,23 +148,28 @@ export const HomePage: React.FC = () => {
             <p className="campaign-banner-desc">
               Auspicious vermillion reds, heavy korvai temple borders, and pure silver-gold zari weaves designed to make your grand wedding unforgettable.
             </p>
-            <Link to="/shop?category=Wedding+Sarees" className="btn-gold campaign-banner-btn">
-              Explore Bridal Sarees <ArrowRight size={18} />
-            </Link>
+            <SriLakshmiButton
+              to="/shop?category=Wedding+Sarees"
+              variant="gold"
+              size="lg"
+              className="campaign-banner-btn"
+            >
+              Explore Bridal Sarees
+            </SriLakshmiButton>
           </div>
         </div>
       </section>
 
-      {/* E. BEST SELLERS */}
+      {/* 13. BEST SELLERS (Redesigned Editorial Product Grid) */}
       <section className="section-padding" style={{ backgroundColor: 'var(--bg-primary)' }}>
         <div className="container">
           <div className="section-header-row">
             <div>
-              <span style={{ color: 'var(--color-gold-dark)', fontWeight: 700, fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+              <span style={{ color: 'var(--color-gold-dark)', fontWeight: 700, fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.2em' }}>
                 Customer Favorites
               </span>
               <h2 className="section-title">
-                Best Selling Sarees
+                Heirloom Best Sellers
               </h2>
             </div>
             <Link to="/shop?category=Best+Sellers" className="section-header-link">
@@ -152,19 +185,19 @@ export const HomePage: React.FC = () => {
         </div>
       </section>
 
-      {/* H. BRAND STORY */}
+      {/* 14. BRAND STORY & ARTISAN LEGACY */}
       <section id="our-story" className="section-padding" style={{ backgroundColor: '#FFFFFF', borderTop: '1px solid var(--color-border)' }}>
         <div className="container">
           <div className="brand-story-grid">
-            <div style={{ borderRadius: 'var(--radius-md)', overflow: 'hidden', boxShadow: 'var(--shadow-lg)' }}>
+            <div style={{ borderRadius: 'var(--radius-sm)', overflow: 'hidden', boxShadow: 'var(--shadow-lg)' }}>
               <img src="/images/cat-silk.jpg" alt="Sri Lakshmi Sarees Craftsmanship" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             </div>
 
             <div>
-              <span style={{ color: 'var(--color-gold-dark)', fontWeight: 700, fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+              <span style={{ color: 'var(--color-gold-dark)', fontWeight: 700, fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.2em' }}>
                 Our Story & Legacy
               </span>
-              <h2 className="section-title" style={{ marginTop: '0.25rem', marginBottom: '1.25rem' }}>
+              <h2 className="section-title" style={{ marginTop: '0.35rem', marginBottom: '1.25rem' }}>
                 Crafted with Passion, Preserved for Generations
               </h2>
               <p style={{ fontSize: '1rem', color: 'var(--color-text-muted)', lineHeight: 1.7, marginBottom: '1rem' }}>
@@ -196,14 +229,14 @@ export const HomePage: React.FC = () => {
         </div>
       </section>
 
-      {/* I. CUSTOMER TESTIMONIALS */}
+      {/* 15. CUSTOMER REVIEWS */}
       <section className="section-padding" style={{ backgroundColor: 'var(--bg-secondary)' }}>
         <div className="container">
           <div style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto 3rem' }}>
-            <span style={{ color: 'var(--color-gold-dark)', fontWeight: 700, fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            <span style={{ color: 'var(--color-gold-dark)', fontWeight: 700, fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.2em' }}>
               Words from Our Patrons
             </span>
-            <h2 className="section-title" style={{ marginTop: '0.25rem' }}>
+            <h2 className="section-title" style={{ marginTop: '0.35rem' }}>
               Customer Love & Reviews
             </h2>
           </div>
@@ -217,10 +250,10 @@ export const HomePage: React.FC = () => {
                 <div>
                   <div style={{ display: 'flex', gap: '0.25rem', color: 'var(--color-gold)', marginBottom: '1rem' }}>
                     {[...Array(test.rating)].map((_, i) => (
-                      <Star key={i} size={16} fill="var(--color-gold)" color="var(--color-gold)" />
+                      <Star key={i} size={15} fill="var(--color-gold)" color="var(--color-gold)" />
                     ))}
                   </div>
-                  <p style={{ fontSize: '0.9375rem', color: 'var(--color-text)', fontStyle: 'italic', lineHeight: 1.6, marginBottom: '1.25rem' }}>
+                  <p style={{ fontSize: '0.9375rem', color: 'var(--color-text)', fontStyle: 'italic', lineHeight: 1.65, marginBottom: '1.25rem' }}>
                     "{test.comment}"
                   </p>
                 </div>
@@ -239,3 +272,5 @@ export const HomePage: React.FC = () => {
     </div>
   );
 };
+
+export default HomePage;

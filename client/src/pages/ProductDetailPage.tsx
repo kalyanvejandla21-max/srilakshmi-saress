@@ -7,6 +7,7 @@ import { getStoredProducts, fetchProductsFromServer, checkServiceabilityApi } fr
 import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
 import { useToast } from '../context/ToastContext';
+import { SriLakshmiButton } from '../components/ui/SriLakshmiButton';
 
 export const ProductDetailPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -43,9 +44,9 @@ export const ProductDetailPage: React.FC = () => {
         <p style={{ marginTop: '0.5rem', marginBottom: '1.5rem', color: 'var(--color-text-muted)' }}>
           The requested saree may have been archived or moved.
         </p>
-        <Link to="/shop" className="btn-primary">
+        <SriLakshmiButton to="/shop" variant="primary" size="md">
           Back to Catalogue
-        </Link>
+        </SriLakshmiButton>
       </div>
     );
   }
