@@ -273,7 +273,7 @@ export const PickASilk: React.FC<PickASilkProps> = ({ products }) => {
           </h2>
 
           <p className="pick-silk-desc">
-            Explore pure handloom colors in continuous 3D motion. Drag horizontally or watch the palette glide.
+            A sensory palette of pure handloom silks and authentic zari.
           </p>
         </div>
 
@@ -367,7 +367,7 @@ export const PickASilk: React.FC<PickASilkProps> = ({ products }) => {
         {/* Drag Hint at Bottom */}
         <div className="pick-silk-drag-hint" aria-hidden="true">
           <span className="hint-pulse">✦</span>
-          <span>Continuously drifting • Drag horizontally to rotate swatches with momentum</span>
+          <span>Swipe to explore palette</span>
           <span className="hint-pulse">✦</span>
         </div>
       </div>

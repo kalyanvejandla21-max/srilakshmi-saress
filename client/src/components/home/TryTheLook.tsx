@@ -46,7 +46,7 @@ export const TryTheLook: React.FC<TryTheLookProps> = ({ products }) => {
     {
       id: 'look-1',
       name: 'Royal Crimson Muhurtham Look',
-      tagline: 'Bridal Kanjivaram draped with hand-embroidered raw silk blouse and temple gold jewellery.',
+      tagline: 'Bridal Kanjivaram paired with raw silk and temple gold.',
       modelImage: '/images/cat-wedding.jpg',
       sareeColor: '#8B202F',
       sareeProductId: 'prod-4',
@@ -66,7 +66,7 @@ export const TryTheLook: React.FC<TryTheLookProps> = ({ products }) => {
     {
       id: 'look-2',
       name: 'Emerald Brocade Splendour',
-      tagline: 'Lush green Kanjivaram paired with antique metallic accents and contrast ruby blouse.',
+      tagline: 'Emerald brocade paired with antique gold accents.',
       modelImage: '/images/cat-silk.jpg',
       sareeColor: '#1A5D3A',
       sareeProductId: 'prod-2',
@@ -86,7 +86,7 @@ export const TryTheLook: React.FC<TryTheLookProps> = ({ products }) => {
     {
       id: 'look-3',
       name: 'Banarasi Kadwa Evening Grace',
-      tagline: 'Silver kadwa weave on royal magenta silk with silver filigree neckpiece.',
+      tagline: 'Silver kadwa weave on royal magenta silk.',
       modelImage: '/images/cat-festive.jpg',
       sareeColor: '#6B1D4B',
       sareeProductId: 'prod-5',
@@ -106,7 +106,7 @@ export const TryTheLook: React.FC<TryTheLookProps> = ({ products }) => {
     {
       id: 'look-4',
       name: 'Pastel Chanderi Daytime Poise',
-      tagline: 'Breathable Chanderi cotton-silk paired with ivory hand-blocked blouse and silver hasli.',
+      tagline: 'Chanderi cotton-silk with artisan hand-blocked accents.',
       modelImage: '/images/cat-cotton.jpg',
       sareeColor: '#4A6984',
       sareeProductId: 'prod-3',
@@ -189,7 +189,7 @@ export const TryTheLook: React.FC<TryTheLookProps> = ({ products }) => {
           </h2>
 
           <p className="try-look-desc">
-            Complete handloom ensembles curated by master stylists. Tap a piece or hotspot to inspect each artisanal detail.
+            Complete handloom ensembles curated by master stylists.
           </p>
         </div>
 

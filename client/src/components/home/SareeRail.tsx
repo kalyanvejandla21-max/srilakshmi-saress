@@ -381,7 +381,7 @@ export const SareeRail: React.FC<SareeRailProps> = ({ products = [] }) => {
         <h2 className="saree-rail-title">Every Saree, on the rail.</h2>
 
         <p className="saree-rail-subtitle">
-          Suspended in fluid motion. Touch, drift, or click any piece to inspect it in the atelier spotlight.
+          Heirloom handlooms draped on the boutique rail. Select any piece to inspect.
         </p>
 
         {/* Category Filter Pills (as visible in reference video frames 28–34) */}

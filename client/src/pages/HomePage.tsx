@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Sparkles, ShieldCheck, HeartHandshake, Award, Star, Truck, CheckCircle2 } from 'lucide-react';
+import { ArrowRight, HeartHandshake, Award } from 'lucide-react';
 import { ProductCard } from '../components/product/ProductCard';
 import { QuickViewModal } from '../components/product/QuickViewModal';
 import { AtelierHero } from '../components/hero/AtelierHero';
@@ -37,30 +37,6 @@ export const HomePage: React.FC = () => {
     { title: 'Festive Sarees', count: 'Royal Silver Brocade', img: '/images/cat-festive.jpg', link: '/shop?category=Festive+Sarees' },
     { title: 'Designer Sarees', count: 'Organza & Zardozi', img: '/images/cat-designer.jpg', link: '/shop?category=Designer+Sarees' },
     { title: 'Daily Wear', count: 'Soft Mulmul Print', img: '/images/cat-dailywear.jpg', link: '/shop?category=Daily+Wear+Sarees' },
-  ];
-
-  const testimonials = [
-    {
-      name: 'Dr. Meenakshi Sundaram',
-      location: 'Chennai, Tamil Nadu',
-      comment: 'The Mulberry Kanjivaram silk saree I ordered for my daughter’s wedding was breathtaking. Authentic zari, heavy pallu, and received in pristine boxed packaging!',
-      rating: 5,
-      date: 'Verified Buyer'
-    },
-    {
-      name: 'Ananya Deshmukh',
-      location: 'Mumbai, Maharashtra',
-      comment: 'Sri Lakshmi Sarees has revived my love for genuine handloom cottons. The Chanderi tissue saree drapes so effortlessly and gracefully.',
-      rating: 5,
-      date: 'Verified Buyer'
-    },
-    {
-      name: 'Radhika Reddy',
-      location: 'Hyderabad, Telangana',
-      comment: 'Super fast delivery and incredible customer service on WhatsApp. The color matches the pictures 100%! Highly recommended.',
-      rating: 5,
-      date: 'Verified Buyer'
-    }
   ];
 
   return (
@@ -100,7 +76,7 @@ export const HomePage: React.FC = () => {
               Handcrafted Collections
             </span>
             <h2 className="section-title">
-              Shop By Saree Fabric & Occasion
+              Curated Collections
             </h2>
             <div style={{ width: '50px', height: '1.5px', backgroundColor: 'var(--color-gold)', margin: '1rem auto 0' }} />
           </div>
@@ -122,7 +98,7 @@ export const HomePage: React.FC = () => {
               </h2>
             </div>
             <Link to="/shop?category=New+Arrivals" className="section-header-link">
-              View All New Arrivals <ArrowRight size={16} />
+              View All <ArrowRight size={16} />
             </Link>
           </div>
 
@@ -143,10 +119,10 @@ export const HomePage: React.FC = () => {
               Royal Bridal Edition
             </span>
             <h2 className="campaign-banner-title">
-              The Wedding & Muhurtham Bridal Collection
+              The Muhurtham Bridal Edit
             </h2>
             <p className="campaign-banner-desc">
-              Auspicious vermillion reds, heavy korvai temple borders, and pure silver-gold zari weaves designed to make your grand wedding unforgettable.
+              Auspicious vermillion reds and pure silver-gold zari weaves for your sacred day.
             </p>
             <SriLakshmiButton
               to="/shop?category=Wedding+Sarees"
@@ -154,7 +130,7 @@ export const HomePage: React.FC = () => {
               size="lg"
               className="campaign-banner-btn"
             >
-              Explore Bridal Sarees
+              Explore Collection
             </SriLakshmiButton>
           </div>
         </div>
@@ -166,14 +142,14 @@ export const HomePage: React.FC = () => {
           <div className="section-header-row">
             <div>
               <span style={{ color: 'var(--color-gold-dark)', fontWeight: 700, fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.2em' }}>
-                Customer Favorites
+                Timeless Icons
               </span>
               <h2 className="section-title">
                 Heirloom Best Sellers
               </h2>
             </div>
             <Link to="/shop?category=Best+Sellers" className="section-header-link">
-              View All Best Sellers <ArrowRight size={16} />
+              View All <ArrowRight size={16} />
             </Link>
           </div>
 
@@ -195,16 +171,13 @@ export const HomePage: React.FC = () => {
 
             <div>
               <span style={{ color: 'var(--color-gold-dark)', fontWeight: 700, fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.2em' }}>
-                Our Story & Legacy
+                Heritage
               </span>
               <h2 className="section-title" style={{ marginTop: '0.35rem', marginBottom: '1.25rem' }}>
-                Crafted with Passion, Preserved for Generations
+                Preserved for Generations
               </h2>
-              <p style={{ fontSize: '1rem', color: 'var(--color-text-muted)', lineHeight: 1.7, marginBottom: '1rem' }}>
-                Sri Lakshmi Sarees was born out of an abiding reverence for Indian textile heritage and the timeless art of handloom weaving.
-              </p>
               <p style={{ fontSize: '1rem', color: 'var(--color-text-muted)', lineHeight: 1.7, marginBottom: '1.5rem' }}>
-                Each saree in our collection is curated for thread purity, zari authenticity, color vibrancy, and flawless drape. We work directly with master weaving families to bring you heirloom quality fashion.
+                Rooted in South Indian textile heritage, each saree is curated for authentic zari, thread purity, and master handloom artistry passed down through generations.
               </p>
 
               <div className="brand-features-grid">
@@ -225,44 +198,6 @@ export const HomePage: React.FC = () => {
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 15. CUSTOMER REVIEWS */}
-      <section className="section-padding" style={{ backgroundColor: 'var(--bg-secondary)' }}>
-        <div className="container">
-          <div style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto 3rem' }}>
-            <span style={{ color: 'var(--color-gold-dark)', fontWeight: 700, fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.2em' }}>
-              Words from Our Patrons
-            </span>
-            <h2 className="section-title" style={{ marginTop: '0.35rem' }}>
-              Customer Love & Reviews
-            </h2>
-          </div>
-
-          <div className="testimonials-grid">
-            {testimonials.map((test, idx) => (
-              <div
-                key={idx}
-                className="testimonial-card"
-              >
-                <div>
-                  <div style={{ display: 'flex', gap: '0.25rem', color: 'var(--color-gold)', marginBottom: '1rem' }}>
-                    {[...Array(test.rating)].map((_, i) => (
-                      <Star key={i} size={15} fill="var(--color-gold)" color="var(--color-gold)" />
-                    ))}
-                  </div>
-                  <p style={{ fontSize: '0.9375rem', color: 'var(--color-text)', fontStyle: 'italic', lineHeight: 1.65, marginBottom: '1.25rem' }}>
-                    "{test.comment}"
-                  </p>
-                </div>
-                <div>
-                  <div style={{ fontWeight: 700, color: 'var(--color-maroon)', fontSize: '0.9375rem' }}>{test.name}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{test.location} • {test.date}</div>
-                </div>
-              </div>
-            ))}
           </div>
         </div>
       </section>

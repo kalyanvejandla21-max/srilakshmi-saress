@@ -7,12 +7,12 @@ interface TickerItem {
 }
 
 const TICKER_ITEMS: TickerItem[] = [
-  { tag: 'TRY THE LOOK', text: 'Eight Kanjivaram looks, styled head to toe' },
-  { tag: 'PURE ZARI', text: 'Silver-core zari woven into every temple border' },
-  { tag: 'THE RACK', text: 'Browse the full rail of pure handloom silks' },
-  { tag: 'BRIDAL', text: 'Heirloom bridal silks for the day that matters' },
-  { tag: 'THE LOOMS', text: 'Handwoven in Kanchipuram, one saree at a time' },
-  { tag: 'AUTHENTIC WEAVE', text: 'Silk Mark certified pure mulberry silk' },
+  { tag: 'HERITAGE ATELIER', text: 'Kanchipuram Temple Looms' },
+  { tag: 'PURE ZARI', text: 'Silver & Gold Core Weave' },
+  { tag: 'BRIDAL COUTURE', text: 'Heirloom Silks for Generations' },
+  { tag: 'AUTHENTIC WEAVE', text: 'Silk Mark Certified Mulberry' },
+  { tag: 'CURATED ENSEMBLES', text: 'Styled Head to Toe' },
+  { tag: 'TIMELESS DRAPE', text: 'Handwoven by Master Artisans' },
 ];
 
 export const HeritageTicker: React.FC = () => {

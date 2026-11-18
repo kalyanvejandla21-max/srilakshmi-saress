@@ -107,7 +107,7 @@ export const SixMoodsArchive: React.FC = () => {
           </h2>
 
           <p className="six-moods-desc">
-            Six definitive expressions of South Indian handloom artistry, each sculpted for eternal celebrations.
+            Six definitive expressions of South Indian handloom artistry.
           </p>
         </div>
 

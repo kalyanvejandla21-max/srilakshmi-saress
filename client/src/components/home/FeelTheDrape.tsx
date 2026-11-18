@@ -41,7 +41,7 @@ export const FeelTheDrape: React.FC = () => {
         <div className="feel-the-drape-header">
           <div className="feel-the-drape-eyebrow">
             <span className="feel-the-drape-dash" />
-            <span>THE MUSE REELS</span>
+            <span>SILK IN MOTION</span>
             <span className="feel-the-drape-dash" />
           </div>
 
@@ -57,7 +57,7 @@ export const FeelTheDrape: React.FC = () => {
           </h2>
 
           <p className="feel-the-drape-subtitle">
-            A visual symphony of pure silk in motion. Witness the weight, sheen, and poetic fall of handcrafted weaves.
+            The weight, sheen, and graceful fall of pure handloom silk.
           </p>
         </div>
 
@@ -82,9 +82,9 @@ export const FeelTheDrape: React.FC = () => {
             </Link>
 
             <div className="motion-promo-card card-bot">
-              <span className="promo-badge">✦ FESTIVE SPECIAL</span>
+              <span className="promo-badge">✦ ATELIER WEAVE</span>
               <h4 className="promo-title">Pure Zari Heirlooms</h4>
-              <p className="promo-desc">Flat 10% off with code LAKSHMI10</p>
+              <p className="promo-desc">Woven for sacred celebrations</p>
             </div>
           </div>
 
@@ -104,7 +104,7 @@ export const FeelTheDrape: React.FC = () => {
               {/* Top Badge */}
               <div className="center-stage-badge">
                 <Sparkles size={14} />
-                <span>SILK IN MOTION • ATELIER CUT</span>
+                <span>ATELIER IN MOTION</span>
               </div>
 
               {/* Floating Sound / Play Indicator */}

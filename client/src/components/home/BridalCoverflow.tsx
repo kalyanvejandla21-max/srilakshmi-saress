@@ -160,7 +160,7 @@ export const BridalCoverflow: React.FC<BridalCoverflowProps> = ({ products }) =>
           </h2>
 
           <p className="bridal-coverflow-desc">
-            Heirloom bridal silks woven with pure silver-core zari. Draped in continuous 3D arc perspective.
+            Heirloom bridal silks woven with pure silver-core zari for sacred ceremonies.
           </p>
         </div>
 

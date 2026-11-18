@@ -41,8 +41,7 @@ export const AtelierHero: React.FC = () => {
 
           {/* Subtext */}
           <p className="atelier-hero-subtext">
-            Sri Lakshmi Sarees brings the sacred temple looms of South India home.
-            Pure Kanjivaram & Banarasi silks in heirloom colours, bordered in real gold zari and finished by master hands.
+            Sacred temple looms handwoven in pure zari and heirloom silk.
           </p>
 
           {/* Dual Action Buttons */}

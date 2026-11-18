@@ -139,7 +139,7 @@ export const Footer: React.FC = () => {
           <div>
             <h4 className="footer-heading">Stay Connected</h4>
             <p style={{ color: '#B5B0A6', fontSize: '0.875rem', marginBottom: '1rem' }}>
-              Subscribe to receive exclusive updates on newly curated sarees and festive arrivals.
+              Curated previews, private releases, and festive announcements.
             </p>
             <form onSubmit={handleNewsletterSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <input
@@ -158,7 +158,7 @@ export const Footer: React.FC = () => {
                 }}
               />
               <button type="submit" className="btn-gold" style={{ width: '100%', padding: '0.75rem' }}>
-                Subscribe Now
+                Subscribe
               </button>
             </form>
             {(BUSINESS_CONFIG.social.instagram || BUSINESS_CONFIG.social.facebook) && (
@@ -184,7 +184,7 @@ export const Footer: React.FC = () => {
             © {new Date().getFullYear()} {BUSINESS_CONFIG.brandName}. Family-run enterprise in India.
           </div>
           <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <span>Verified Secure Payments: Cashfree | UPI | Net Banking | Cards | COD</span>
+            <span>Secure Payments: UPI • Net Banking • Cards • COD</span>
             <Link
               to="/admin/login"
               style={{

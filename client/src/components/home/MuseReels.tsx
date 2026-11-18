@@ -80,7 +80,7 @@ export const MuseReels: React.FC = () => {
           </h2>
 
           <p className="muse-reels-desc">
-            Short-form cinema capturing the fluid drape, natural light reflections, and handloom soul of Sri Lakshmi Sarees.
+            Visual poetry capturing the fluid drape and handloom soul of pure silk.
           </p>
         </div>
 
@@ -157,7 +157,7 @@ export const MuseReels: React.FC = () => {
                   onClick={() => setActiveReel(null)}
                 >
                   <ShoppingBag size={17} />
-                  <span>Shop Saree in Reel</span>
+                  <span>Shop This Saree</span>
                   <ArrowRight size={15} />
                 </Link>
               </div>

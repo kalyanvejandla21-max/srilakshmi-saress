@@ -27,16 +27,7 @@ export const AnnouncementBar: React.FC<AnnouncementBarProps> = ({ announcement }
 
       {/* Main Promotional Offer Text */}
       <span className="announcement-content">
-        <span className="announcement-lead">Grand Festive Offer:</span>{' '}
-        Use code <span className="announcement-code">LAKSHMI10</span> for Flat 10% Off on All Pure Silk Sarees
-      </span>
-
-      {/* Elegant Pipe Separator */}
-      <span className="announcement-separator" aria-hidden="true">|</span>
-
-      {/* Free Shipping Tagline */}
-      <span className="announcement-shipping">
-        Free Express Shipping across India
+        Handcrafted Pure Silk Handlooms • Complimentary Express Shipping Across India • Code <span className="announcement-code">LAKSHMI10</span> for 10% Off
       </span>
 
       {/* Elegant Pipe Separator */}

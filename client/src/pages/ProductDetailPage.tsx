@@ -140,11 +140,6 @@ export const ProductDetailPage: React.FC = () => {
                   <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-gold-dark)', fontWeight: 700 }}>
                     {product.category} • SKU: {product.sku}
                   </span>
-                  {product.isDemo && (
-                    <span style={{ fontSize: '0.6875rem', backgroundColor: '#FEF3C7', color: '#92400E', padding: '0.15rem 0.5rem', borderRadius: '4px', fontWeight: 700, textTransform: 'uppercase' }}>
-                      Demo Saree
-                    </span>
-                  )}
                 </div>
                 <h1 className="pdp-title">
                   {product.name}
@@ -207,7 +202,7 @@ export const ProductDetailPage: React.FC = () => {
                 </span>
               ) : (
                 <span style={{ color: 'var(--color-success)', fontWeight: 600, fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                  <CheckCircle size={16} /> In Stock ({product.stock} Sarees Available for Immediate Shipment)
+                  <CheckCircle size={16} /> In Stock ({product.stock} available)
                 </span>
               )}
             </div>
@@ -255,7 +250,7 @@ export const ProductDetailPage: React.FC = () => {
                   className="btn-gold pdp-buy-now-btn"
                   onClick={handleBuyNow}
                 >
-                  Buy Now with Express Checkout
+                  Buy Now
                 </button>
               </div>
             )}
