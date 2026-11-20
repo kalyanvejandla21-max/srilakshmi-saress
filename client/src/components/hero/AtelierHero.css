@@ -1,3 +1,8 @@
+/* ==========================================================================
+   SRI LAKSHMI SAREES - LUXURY EDITORIAL HERO CAROUSEL
+   Crossfade animation, Ken-Burns cinematic scale, and editorial styling
+   ========================================================================== */
+
 .atelier-hero-section {
   position: relative;
   width: 100%;
@@ -5,9 +10,49 @@
   display: flex;
   align-items: flex-end;
   overflow: hidden;
-  background-color: #0F080A;
+  background-color: #0B0608;
+  outline: none;
 }
 
+/* Slide viewport container housing the layered absolute slides */
+.atelier-hero-slides-viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 88vh;
+  display: flex;
+  align-items: flex-end;
+}
+
+/* Individual Slide Layer */
+.atelier-hero-slide {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  /* Smooth 900ms Crossfade Transition */
+  transition: opacity 900ms cubic-bezier(0.4, 0, 0.2, 1),
+              visibility 900ms cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity, transform;
+}
+
+.atelier-hero-slide.is-active {
+  opacity: 1;
+  visibility: visible;
+  z-index: 2;
+  pointer-events: auto;
+}
+
+.atelier-hero-slide.is-idle {
+  opacity: 0;
+  visibility: hidden;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Background Media Container */
 .atelier-hero-media-wrap {
   position: absolute;
   inset: 0;
@@ -17,25 +62,30 @@
   z-index: 1;
 }
 
-/* Noticeable Cinematic Ken-Burns Motion (10s cycle) */
+/* Subtle Cinematic Scale (1.03 to 1.0) Breathing Animation */
 .atelier-hero-bg-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center 25%;
-  animation: kenBurnsHero 10s ease-in-out infinite alternate;
+  transform: scale(1.03);
+  transition: transform 7s cubic-bezier(0.25, 1, 0.5, 1);
   will-change: transform;
 }
 
-@keyframes kenBurnsHero {
+.atelier-hero-slide.is-active .atelier-hero-bg-img.is-animating {
+  transform: scale(1);
+  animation: heroKenBurnsBreath 14s ease-in-out infinite alternate;
+}
+
+@keyframes heroKenBurnsBreath {
   0% {
-    transform: scale(1) translate(0, 0);
+    transform: scale(1) translate3d(0, 0, 0);
   }
   50% {
-    transform: scale(1.06) translate(-1.2%, -0.8%);
+    transform: scale(1.035) translate3d(-0.8%, -0.5%, 0);
   }
   100% {
-    transform: scale(1.1) translate(1%, -1.2%);
+    transform: scale(1.015) translate3d(0.5%, -0.8%, 0);
   }
 }
 
@@ -46,11 +96,11 @@
   background: linear-gradient(
     115deg,
     rgba(255, 255, 255, 0) 25%,
-    rgba(230, 202, 101, 0.15) 50%,
+    rgba(230, 202, 101, 0.12) 50%,
     rgba(255, 255, 255, 0) 75%
   );
   transform: translateX(-120%);
-  animation: heroShimmerSweep 5s ease-in-out infinite;
+  animation: heroShimmerSweep 6s ease-in-out infinite;
   pointer-events: none;
   z-index: 3;
 }
@@ -64,111 +114,102 @@
   }
 }
 
+/* Multi-tier Gradient Scrims customized by banner theme */
 .atelier-hero-scrim {
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(15, 8, 10, 0.2) 0%,
-    rgba(15, 8, 10, 0.45) 45%,
-    rgba(15, 8, 10, 0.94) 100%
-  ),
-  linear-gradient(
-    90deg,
-    rgba(15, 8, 10, 0.88) 0%,
-    rgba(15, 8, 10, 0.5) 50%,
-    rgba(15, 8, 10, 0.15) 100%
-  );
   z-index: 2;
+  pointer-events: none;
 }
 
+/* Kanchipuram Grand Atelier: Deep Obsidian & Warm Gold */
+.atelier-hero-scrim.scrim-kanchipuram {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(11, 6, 8, 0.15) 0%,
+      rgba(11, 6, 8, 0.45) 45%,
+      rgba(11, 6, 8, 0.94) 100%
+    ),
+    linear-gradient(
+      90deg,
+      rgba(11, 6, 8, 0.9) 0%,
+      rgba(11, 6, 8, 0.55) 50%,
+      rgba(11, 6, 8, 0.12) 100%
+    );
+}
+
+/* Bridal Muhurtham: Auspicious Deep Crimson & Temple Gold */
+.atelier-hero-scrim.scrim-bridal {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(20, 5, 8, 0.18) 0%,
+      rgba(24, 6, 11, 0.5) 45%,
+      rgba(18, 4, 8, 0.95) 100%
+    ),
+    linear-gradient(
+      90deg,
+      rgba(24, 6, 11, 0.92) 0%,
+      rgba(24, 6, 11, 0.58) 52%,
+      rgba(18, 4, 8, 0.12) 100%
+    );
+}
+
+/* Banarasi Heirlooms: Royal Amethyst & Moonlight Silver */
+.atelier-hero-scrim.scrim-banarasi {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(15, 6, 18, 0.18) 0%,
+      rgba(18, 7, 22, 0.5) 45%,
+      rgba(12, 4, 15, 0.95) 100%
+    ),
+    linear-gradient(
+      90deg,
+      rgba(18, 7, 22, 0.92) 0%,
+      rgba(18, 7, 22, 0.58) 52%,
+      rgba(12, 4, 15, 0.12) 100%
+    );
+}
+
+/* Editorial Content Container */
 .atelier-hero-content-container {
   position: relative;
   z-index: 5;
   width: 100%;
   max-width: 1400px;
   margin: 0 auto;
-  padding: 4rem 2rem 5rem;
+  padding: 4.5rem 3rem 4.5rem;
+  box-sizing: border-box;
 }
 
 .atelier-hero-text-block {
   max-width: 680px;
 }
 
-/* Staggered Visible Entrance Animations on Page Load */
-.atelier-hero-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.6rem;
-  background: rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(230, 202, 101, 0.4);
-  padding: 0.45rem 1rem;
-  border-radius: 999px;
-  font-family: var(--font-sans, system-ui);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  color: #F8E6B0;
-  margin-bottom: 1.25rem;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+/* Staggered Content Animation upon becoming active */
+.atelier-hero-slide.is-active .atelier-hero-badge {
   animation: heroItemEntrance 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both,
              heroBadgeFloat 3.6s ease-in-out infinite alternate;
 }
 
-@keyframes heroBadgeFloat {
-  0% { transform: translateY(0); }
-  100% { transform: translateY(-4px); }
+.atelier-hero-slide.is-active .atelier-hero-headline {
+  animation: heroItemEntrance 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.22s both;
 }
 
-.badge-sparkle {
-  color: #E6CA65;
-  font-size: 0.8rem;
-  display: inline-block;
-  animation: sparkleTwinkle 2s ease-in-out infinite alternate;
+.atelier-hero-slide.is-active .atelier-hero-subtext {
+  animation: heroItemEntrance 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.36s both;
 }
 
-@keyframes sparkleTwinkle {
-  0% { transform: scale(0.9) rotate(0deg); opacity: 0.7; }
-  100% { transform: scale(1.25) rotate(45deg); opacity: 1; }
-}
-
-.atelier-hero-headline {
-  font-family: var(--font-serif, "Playfair Display", Georgia, serif);
-  font-size: clamp(2.8rem, 5.5vw, 4.5rem);
-  font-weight: 700;
-  color: #FFFFFF;
-  line-height: 1.08;
-  letter-spacing: -0.02em;
-  margin: 0 0 1.25rem;
-  text-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
-  animation: heroItemEntrance 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
-}
-
-.atelier-hero-subtext {
-  font-family: var(--font-sans, system-ui);
-  font-size: clamp(1rem, 1.25vw, 1.15rem);
-  color: rgba(255, 255, 255, 0.9);
-  line-height: 1.65;
-  margin: 0 0 2.25rem;
-  max-width: 600px;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-  animation: heroItemEntrance 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.45s both;
-}
-
-.atelier-hero-actions {
-  display: flex;
-  align-items: center;
-  gap: 1.25rem;
-  flex-wrap: wrap;
-  animation: heroItemEntrance 1s cubic-bezier(0.16, 1, 0.3, 1) 0.65s both;
+.atelier-hero-slide.is-active .atelier-hero-actions {
+  animation: heroItemEntrance 1s cubic-bezier(0.16, 1, 0.3, 1) 0.5s both;
 }
 
 @keyframes heroItemEntrance {
   0% {
     opacity: 0;
-    transform: translateY(35px);
+    transform: translateY(28px);
   }
   100% {
     opacity: 1;
@@ -176,83 +217,175 @@
   }
 }
 
-.hero-action-pill {
+/* Luxury Category Badge */
+.atelier-hero-badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.65rem;
-  padding: 0.95rem 2rem;
+  gap: 0.6rem;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(230, 202, 101, 0.38);
+  padding: 0.45rem 1.05rem;
   border-radius: 999px;
   font-family: var(--font-sans, system-ui);
-  font-size: 0.9375rem;
-  font-weight: 600;
-  text-decoration: none;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: #F8E6B0;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 }
 
-.hero-action-pill.primary-pill {
-  background: #C81D25;
+@keyframes heroBadgeFloat {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-3px); }
+}
+
+.badge-sparkle {
+  color: #E6CA65;
+  font-size: 0.8rem;
+  display: inline-block;
+  animation: sparkleTwinkle 2.4s ease-in-out infinite alternate;
+}
+
+@keyframes sparkleTwinkle {
+  0% { transform: scale(0.9) rotate(0deg); opacity: 0.7; }
+  100% { transform: scale(1.2) rotate(45deg); opacity: 1; }
+}
+
+/* Grand Serif Headline */
+.atelier-hero-headline {
+  font-family: var(--font-serif, "Playfair Display", Georgia, serif);
+  font-size: clamp(2.6rem, 5.2vw, 4.25rem);
+  font-weight: 700;
   color: #FFFFFF;
-  border: 1px solid #C81D25;
-  box-shadow: 0 8px 24px rgba(200, 29, 37, 0.38);
-  position: relative;
-  overflow: hidden;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin: 0 0 1.2rem;
+  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
 }
 
-.hero-action-pill.primary-pill::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 60%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
-  animation: btnSheen 3.2s infinite;
+/* Editorial Subtext */
+.atelier-hero-subtext {
+  font-family: var(--font-sans, system-ui);
+  font-size: clamp(0.975rem, 1.2vw, 1.125rem);
+  color: rgba(255, 255, 255, 0.88);
+  line-height: 1.65;
+  margin: 0 0 2.25rem;
+  max-width: 580px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 
-@keyframes btnSheen {
-  0%, 60% { left: -100%; }
-  100% { left: 200%; }
+/* Dual Action Buttons */
+.atelier-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
 }
 
-.hero-action-pill.primary-pill:hover {
-  background: #A0141B;
-  transform: translateY(-2px);
-  box-shadow: 0 12px 30px rgba(200, 29, 37, 0.5);
-}
+/* ==========================================================================
+   RESPONSIVE DESIGN (Tablet & Mobile Adaptations)
+   ========================================================================== */
 
-.hero-action-pill.secondary-pill {
-  background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  color: #FFFFFF;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-}
-
-.hero-action-pill.secondary-pill:hover {
-  background: rgba(255, 255, 255, 0.24);
-  border-color: #FFFFFF;
-  transform: translateY(-2px);
-}
-
-.pill-arrow {
-  transition: transform 0.25s ease;
-}
-
-.hero-action-pill:hover .pill-arrow {
-  transform: translateX(4px);
+@media (max-width: 1024px) {
+  .atelier-hero-section {
+    min-height: 82vh;
+  }
+  .atelier-hero-slides-viewport {
+    min-height: 82vh;
+  }
+  .atelier-hero-content-container {
+    padding: 3.5rem 2rem 3.5rem;
+  }
 }
 
 @media (max-width: 768px) {
   .atelier-hero-section {
     min-height: 80vh;
   }
-  .atelier-hero-content-container {
-    padding: 3rem 1.25rem 3.5rem;
+  .atelier-hero-slides-viewport {
+    min-height: 80vh;
   }
+
+  /* Optimize mobile image framing: Model clearly showcased above text */
+  .atelier-hero-bg-img {
+    object-position: 70% 18% !important;
+  }
+
+  /* Strengthen bottom gradient on mobile to guarantee crystal-clear contrast */
+  .atelier-hero-scrim.scrim-kanchipuram,
+  .atelier-hero-scrim.scrim-bridal,
+  .atelier-hero-scrim.scrim-banarasi {
+    background:
+      linear-gradient(
+        180deg,
+        rgba(11, 6, 8, 0.05) 0%,
+        rgba(11, 6, 8, 0.25) 35%,
+        rgba(11, 6, 8, 0.75) 60%,
+        rgba(11, 6, 8, 0.96) 90%
+      );
+  }
+
+  .atelier-hero-content-container {
+    padding: 2.5rem 1.25rem 3rem;
+  }
+
   .atelier-hero-badge {
     font-size: 0.6875rem;
-    padding: 0.35rem 0.75rem;
+    padding: 0.35rem 0.85rem;
+    margin-bottom: 0.85rem;
+  }
+
+  .atelier-hero-headline {
+    font-size: clamp(2.1rem, 7.5vw, 2.75rem);
+    line-height: 1.14;
+    margin-bottom: 0.85rem;
+  }
+
+  .atelier-hero-subtext {
+    font-size: 0.9375rem;
+    line-height: 1.55;
+    margin-bottom: 1.75rem;
+  }
+
+  .atelier-hero-actions {
+    gap: 0.85rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .atelier-hero-actions {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .atelier-hero-actions > * {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+  }
+}
+
+/* Accessibility: Respect Reduced Motion Preferences */
+@media (prefers-reduced-motion: reduce) {
+  .atelier-hero-slide {
+    transition: opacity 300ms ease;
+  }
+  .atelier-hero-bg-img,
+  .atelier-hero-slide.is-active .atelier-hero-bg-img.is-animating {
+    animation: none !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .atelier-hero-shimmer-sweep {
+    animation: none !important;
+    display: none;
+  }
+  .atelier-hero-badge,
+  .badge-sparkle {
+    animation: none !important;
   }
 }
